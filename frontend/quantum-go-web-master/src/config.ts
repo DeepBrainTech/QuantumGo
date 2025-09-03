@@ -10,10 +10,10 @@ if (isDevelopment) {
   apiUrl = "http://localhost:3000";
   wsUrl = "ws://localhost:3000/ws";
 } else {
-  // 生产环境：使用相对路径通过nginx代理
-  // 这样前端会通过nginx代理访问后端，而不是直接访问Railway URL
-  apiUrl = import.meta.env.VITE_API_URL || "";
-  wsUrl = import.meta.env.VITE_WS_URL || "/ws";
+  // 生产环境：直接访问Railway后端
+  // Vercel前端直接访问Railway后端，不需要nginx代理
+  apiUrl = import.meta.env.VITE_API_URL || "https://quantumgodeploy-production.up.railway.app";
+  wsUrl = import.meta.env.VITE_WS_URL || "wss://quantumgodeploy-production.up.railway.app/ws";
 }
 
 const Config = {
