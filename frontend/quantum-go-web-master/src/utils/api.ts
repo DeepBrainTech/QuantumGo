@@ -24,7 +24,7 @@ class Api {
   }
 
   public async createRoom(user_id: string, model: number = 9, countdown: number = 30, gameMode: string = "pvp"): Promise<Response> {
-    const data = { user_id, countdown, model, gameMode };
+    const data = { user_id, countdown, model, game_mode: gameMode };
     return this.request("/createRoom", data);
   }
 
