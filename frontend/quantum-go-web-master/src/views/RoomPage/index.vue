@@ -160,7 +160,16 @@ const initGame = async (data: Record<string, any>) => {
   
   // 普通PVP模式，建立WebSocket连接
   console.log("PVP mode detected, establishing WebSocket connection");
-  ws = new WebSocket(`${Config.wsUrl}/${user.value.id}/${roomId}`);
+  let wsUrl = `${Config.wsUrl}/${user.value.id}/${roomId}`;
+  
+  // 在生产环境中，如果使用相对路径，需要根据当前协议选择ws或wss
+  if (Config.wsUrl.startsWith('/')) {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    wsUrl = `${protocol}//${window.location.host}${Config.wsUrl}/${user.value.id}/${roomId}`;
+  }
+  
+  console.log("WebSocket URL:", wsUrl);
+  ws = new WebSocket(wsUrl);
   console.log("WebSocket created:", ws);
   
   ws.onopen = () => {

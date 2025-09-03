@@ -13,7 +13,9 @@ class Api {
 
   private async request(path: string, data: Record<string, any>) {
     try {
-      const response = await axios.post(`${this.baseUrl}${path}`, data);
+      // 如果baseUrl为空（生产环境），直接使用path
+      const url = this.baseUrl ? `${this.baseUrl}${path}` : path;
+      const response = await axios.post(url, data);
       if (response.status < 200 || response.status >= 300) {
         return { success: false, status: response.status, data: response.data };
       }
