@@ -1,0 +1,16 @@
+{
+  "rewrites": [
+    {
+      "source": "/room/(.*)",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/login",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/leaderboard",
+      "destination": "/index.html"
+    }
+  ]
+}
