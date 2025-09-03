@@ -160,10 +160,21 @@ const initGame = async (data: Record<string, any>) => {
   
   // 普通PVP模式，建立WebSocket连接
   console.log("PVP mode detected, establishing WebSocket connection");
+  console.log("Config.wsUrl:", Config.wsUrl);
+  console.log("user.value.id:", user.value.id);
+  console.log("roomId:", roomId);
+  
   const wsUrl = `${Config.wsUrl}/${user.value.id}/${roomId}`;
-  console.log("WebSocket URL:", wsUrl);
-  ws = new WebSocket(wsUrl);
-  console.log("WebSocket created:", ws);
+  console.log("Final WebSocket URL:", wsUrl);
+  
+  try {
+    ws = new WebSocket(wsUrl);
+    console.log("WebSocket created successfully:", ws);
+  } catch (error) {
+    console.error("Failed to create WebSocket:", error);
+    ElMessage.error("WebSocket连接创建失败");
+    return;
+  }
   
   ws.onopen = () => {
     console.log("Connected to WebSocket server");
@@ -178,8 +189,9 @@ const initGame = async (data: Record<string, any>) => {
   
   ws.onerror = (error: any) => {
     wsStatus.value = false;
-    ElMessage.warning(lang.value.text.room.ws_disconnected);
     console.error("WebSocket error:", error);
+    console.error("WebSocket readyState:", ws.readyState);
+    ElMessage.error("WebSocket连接失败，请检查网络连接或刷新页面重试");
   };
   
   ws.onmessage = (event: any) => {
