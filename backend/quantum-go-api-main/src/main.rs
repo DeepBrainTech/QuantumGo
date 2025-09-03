@@ -39,6 +39,11 @@ async fn main() {
     // 从环境变量获取数据库地址，如果没有设置则使用默认值
     let database_url = env::var("DATABASE_URL")
         .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5432/quantum_go".to_string());
+    
+    // 添加调试信息
+    println!("DATABASE_URL environment variable: {}", 
+             if env::var("DATABASE_URL").is_ok() { "SET" } else { "NOT SET" });
+    println!("Using database URL: {}", database_url);
 
     // 初始化数据库连接
     let database = Database::new(&database_url)
