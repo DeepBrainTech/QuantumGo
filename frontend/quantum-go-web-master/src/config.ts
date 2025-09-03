@@ -10,10 +10,10 @@ if (isDevelopment) {
   apiUrl = "http://localhost:3000";
   wsUrl = "ws://localhost:3000/ws";
 } else {
-  // 生产环境：使用环境变量或默认值
-  // 使用实际的Railway URL
-  apiUrl = import.meta.env.VITE_API_URL || "https://quantumgodeploy-production.up.railway.app";
-  wsUrl = import.meta.env.VITE_WS_URL || "wss://quantumgodeploy-production.up.railway.app/ws";
+  // 生产环境：使用相对路径通过nginx代理
+  // 这样前端会通过nginx代理访问后端，而不是直接访问Railway URL
+  apiUrl = import.meta.env.VITE_API_URL || "";
+  wsUrl = import.meta.env.VITE_WS_URL || "/ws";
 }
 
 const Config = {
