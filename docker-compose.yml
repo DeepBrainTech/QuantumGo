@@ -1,0 +1,40 @@
+services:
+
+  postgres:
+    image: postgres:13
+    container_name: quantum-go-postgres
+    environment:
+      POSTGRES_DB: quantum_go
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+
+  backend:
+    build: ./backend/quantum-go-api-main
+    container_name: quantum-go-backend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - postgres
+    environment:
+      - DATABASE_URL=postgres://postgres:postgres@postgres:5432/quantum_go
+      - RUST_LOG=info
+    restart: unless-stopped
+
+
+  frontend:
+    build: ./frontend/quantum-go-web-master
+    container_name: quantum-go-frontend
+    ports:
+      - "8080:80"  
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
