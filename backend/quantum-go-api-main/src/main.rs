@@ -77,7 +77,9 @@ async fn main() {
                 .on_response(DefaultOnResponse::default()),
         );
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
+    // 从环境变量获取端口，Railway会自动设置PORT环境变量
+    let port = env::var("PORT").unwrap_or_else(|_| "3000".to_string());
+    let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", port)).await.unwrap();
     tracing::debug!("listening on {}", listener.local_addr().unwrap());
 
     let shutdown = async {
