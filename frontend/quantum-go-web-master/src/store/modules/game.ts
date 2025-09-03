@@ -43,9 +43,17 @@ const mutations = {
 
   setChess(state: any, chessman1: Chessman) {
     state.board1.set(chessman1.position, chessman1);
+    
+    // 量子围棋规则：前两手在两个棋盘上颜色相反
+    let chessman2Type = chessman1.type;
+    if (state.moves <= 2) {
+      // 前两手：量子步，两个棋盘颜色相反
+      chessman2Type = chessman1.type === "black" ? "white" : "black";
+    }
+    
     const chessman2: Chessman = {
       position: chessman1.brother,
-      type: chessman1.type,
+      type: chessman2Type,
       brother: chessman1.position
     };
     state.board2.set(chessman2.position, chessman2);
@@ -359,7 +367,13 @@ const actions = {
               }
               
               // AI真的在下棋，创建棋子并添加到棋盘
-              // 修复：AI落子时，两个棋盘应该完全同步，brother设置为相同位置
+              // 量子围棋规则：前两手在两个棋盘上颜色相反
+              let aiChessman2Type = aiMove.type as ChessmanType;
+              if (state.moves <= 2) {
+                // 前两手：量子步，两个棋盘颜色相反
+                aiChessman2Type = aiMove.type === "black" ? "white" : "black";
+              }
+              
               const aiChessman1: Chessman = { 
                 position: aiMove.position, 
                 type: aiMove.type as ChessmanType, 
@@ -368,7 +382,7 @@ const actions = {
               
               const aiChessman2: Chessman = { 
                 position: aiMove.position, 
-                type: aiMove.type as ChessmanType, 
+                type: aiChessman2Type, 
                 brother: aiMove.position 
               };
               
