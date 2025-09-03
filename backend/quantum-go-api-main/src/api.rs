@@ -21,7 +21,7 @@ pub struct LoginRequest {
 
 #[derive(Deserialize)]
 pub struct CreateRoom {
-    user_id: Uuid,
+    user_id: String, // 改为String类型，更灵活
     model: i32,
     countdown: i32,
     game_mode: Option<String>, // 设为可选字段，保持向后兼容
@@ -79,6 +79,9 @@ pub async fn create_room(
 ) -> ApiResult<serde_json::Value> {
     let room_id = Uuid::new_v4();
     
+    // 将字符串user_id转换为UUID，如果转换失败则生成新的UUID
+    let owner_id = Uuid::parse_str(&req.user_id).unwrap_or_else(|_| Uuid::new_v4());
+    
     // Set visitor_id based on game mode (default to PVP if not specified)
     let game_mode = req.game_mode.as_deref().unwrap_or("pvp");
     let visitor_id = if game_mode == "ai" {
@@ -87,12 +90,12 @@ pub async fn create_room(
         None
     };
     
-    println!("Creating room with game_mode: {}, visitor_id: {:?}", game_mode, visitor_id);
+    println!("Creating room with game_mode: {}, visitor_id: {:?}, owner_id: {}", game_mode, visitor_id, owner_id);
     
     let room_info = RoomInfo {
         id: 0,
         room_id,
-        owner_id: req.user_id,
+        owner_id,
         visitor_id,
         status: if game_mode == "ai" { "playing".to_string() } else { "waiting".to_string() },
         round: "black".to_string(),
