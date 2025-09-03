@@ -27,6 +27,7 @@ pub enum QuantumPhase {
     BlackQuantum,   // 黑方量子阶段（玩家）
     WhiteQuantum,   // 白方量子阶段（AI）
     Entanglement,   // 纠缠阶段（系统处理）
+    Normal,         // 普通阶段（第三手开始）
 }
 
 pub struct SimpleQuantumAI {
@@ -57,7 +58,7 @@ impl SimpleQuantumAI {
                 })
             }
             QuantumPhase::WhiteQuantum => {
-                // AI 白方阶段：选择白棋点
+                // AI 白方量子阶段：选择白棋点
                 self.white_quantum_move(game_state)
             }
             QuantumPhase::Entanglement => {
@@ -67,6 +68,10 @@ impl SimpleQuantumAI {
                     color: "none".to_string(),
                     confidence: self.get_confidence_for_difficulty(),
                 })
+            }
+            QuantumPhase::Normal => {
+                // 普通阶段：AI正常下白棋
+                self.normal_move(game_state)
             }
         }
     }
@@ -111,6 +116,33 @@ impl SimpleQuantumAI {
         let best_position = self.greedy_position_selection(game_state, &candidate_positions, "white");
         
         println!("AI white_quantum_move: selected_position={}", best_position);
+
+        Ok(AIMove {
+            position: best_position,
+            color: "white".to_string(),
+            confidence: self.get_confidence_for_difficulty(),
+        })
+    }
+
+    /// 普通阶段：AI正常下白棋（第三手开始）
+    fn normal_move(&self, game_state: &QuantumBoardState) -> Result<AIMove, Box<dyn Error + Send + Sync>> {
+        let available_positions = self.get_available_positions(game_state);
+        
+        println!("AI normal_move: available_positions={:?}", available_positions);
+
+        if available_positions.is_empty() {
+            // 无点可下，返回无需落子
+            return Ok(AIMove {
+                position: "none".to_string(),
+                color: "white".to_string(),
+                confidence: self.get_confidence_for_difficulty(),
+            });
+        }
+
+        // 在普通阶段，AI选择最佳位置下白棋
+        let best_position = self.greedy_position_selection(game_state, &available_positions, "white");
+        
+        println!("AI normal_move: selected position={}", best_position);
 
         Ok(AIMove {
             position: best_position,
@@ -385,29 +417,47 @@ pub fn room_info_to_quantum_board_state(room_info: &RoomInfo) -> QuantumBoardSta
     println!("Final board1: {:?}", board1);
     println!("Final board2: {:?}", board2);
 
-    // 与"AI 执白"的规则对齐：
-    // 优先使用存储的 phase 字段，如果没有则通过 moves % 2 推导
+    // 量子围棋规则：只有前两手是量子步，之后进入普通模式
     let quantum_phase = if let Some(phase_str) = &room_info.phase {
         // 从存储的字符串解析量子阶段
         match phase_str.as_str() {
             "BlackQuantum" => QuantumPhase::BlackQuantum,
             "WhiteQuantum" => QuantumPhase::WhiteQuantum,
             "Entanglement" => QuantumPhase::Entanglement,
+            "Normal" => QuantumPhase::Normal, // 新增普通阶段
             _ => {
-                // 如果存储的phase无效，回退到moves%2推导
-                if room_info.moves % 2 == 0 {
-                    QuantumPhase::BlackQuantum
+                // 如果存储的phase无效，根据moves数量判断
+                if room_info.moves < 2 {
+                    // 前两手：量子步
+                    if room_info.moves % 2 == 0 {
+                        QuantumPhase::BlackQuantum
+                    } else {
+                        QuantumPhase::WhiteQuantum
+                    }
+                } else if room_info.moves == 2 {
+                    // 第二手完成后进入纠缠阶段
+                    QuantumPhase::Entanglement
                 } else {
-                    QuantumPhase::WhiteQuantum
+                    // 第三手开始：普通模式
+                    QuantumPhase::Normal
                 }
             }
         }
     } else {
-        // 没有存储的phase，使用moves%2推导
-        if room_info.moves % 2 == 0 {
-            QuantumPhase::BlackQuantum
+        // 没有存储的phase，根据moves数量判断
+        if room_info.moves < 2 {
+            // 前两手：量子步
+            if room_info.moves % 2 == 0 {
+                QuantumPhase::BlackQuantum
+            } else {
+                QuantumPhase::WhiteQuantum
+            }
+        } else if room_info.moves == 2 {
+            // 第二手完成后进入纠缠阶段
+            QuantumPhase::Entanglement
         } else {
-            QuantumPhase::WhiteQuantum
+            // 第三手开始：普通模式
+            QuantumPhase::Normal
         }
     };
 
@@ -424,6 +474,14 @@ pub fn room_info_to_quantum_board_state(room_info: &RoomInfo) -> QuantumBoardSta
         QuantumPhase::BlackQuantum => "black".to_string(),
         QuantumPhase::WhiteQuantum => "white".to_string(),
         QuantumPhase::Entanglement => room_info.round.clone(), // 如果从外部载入就尊重原值
+        QuantumPhase::Normal => {
+            // 普通阶段：根据moves判断当前玩家
+            if room_info.moves % 2 == 0 {
+                "black".to_string()
+            } else {
+                "white".to_string()
+            }
+        }
     };
 
     println!("Current player determined: {:?}", current_player);
@@ -523,11 +581,22 @@ pub fn create_quantum_state_from_board_state(
             "black" => QuantumPhase::BlackQuantum,
             "white" => QuantumPhase::WhiteQuantum,
             "common" => QuantumPhase::Entanglement,
+            "normal" => QuantumPhase::Normal, // 新增普通阶段
             _ => {
-                if moves % 2 == 0 {
-                    QuantumPhase::BlackQuantum
+                // 根据moves数量判断阶段
+                if moves < 2 {
+                    // 前两手：量子步
+                    if moves % 2 == 0 {
+                        QuantumPhase::BlackQuantum
+                    } else {
+                        QuantumPhase::WhiteQuantum
+                    }
+                } else if moves == 2 {
+                    // 第二手完成后进入纠缠阶段
+                    QuantumPhase::Entanglement
                 } else {
-                    QuantumPhase::WhiteQuantum
+                    // 第三手开始：普通模式
+                    QuantumPhase::Normal
                 }
             }
         };
@@ -536,6 +605,14 @@ pub fn create_quantum_state_from_board_state(
             QuantumPhase::BlackQuantum => "black".to_string(),
             QuantumPhase::WhiteQuantum => "white".to_string(),
             QuantumPhase::Entanglement => "black".to_string(), // 纠缠阶段后轮到黑方
+            QuantumPhase::Normal => {
+                // 普通阶段：根据moves判断当前玩家
+                if moves % 2 == 0 {
+                    "black".to_string()
+                } else {
+                    "white".to_string()
+                }
+            }
         };
 
         QuantumBoardState {
@@ -640,7 +717,7 @@ impl AIRoom {
                  ai_move.position, ai_move.color);
     }
 
-    /// 推进量子阶段（黑方 → 白方 → 纠缠 → 黑方）
+    /// 推进量子阶段（黑方 → 白方 → 纠缠 → 普通模式）
     fn update_quantum_phase(&mut self) {
         let old_phase = self.game_state.quantum_phase.clone();
         let old_player = self.game_state.current_player.clone();
@@ -656,9 +733,18 @@ impl AIRoom {
                 QuantumPhase::Entanglement
             }
             QuantumPhase::Entanglement => {
-                // 纠缠阶段完毕，轮到黑方
+                // 纠缠阶段完毕，进入普通模式，轮到黑方
                 self.game_state.current_player = "black".to_string();
-                QuantumPhase::BlackQuantum
+                QuantumPhase::Normal
+            }
+            QuantumPhase::Normal => {
+                // 普通模式：黑白交替
+                if self.game_state.current_player == "black" {
+                    self.game_state.current_player = "white".to_string();
+                } else {
+                    self.game_state.current_player = "black".to_string();
+                }
+                QuantumPhase::Normal
             }
         };
         

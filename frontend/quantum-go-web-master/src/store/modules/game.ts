@@ -234,22 +234,32 @@ const actions = {
     const record = { add: [], reduce: [] } as ChessmanRecord;
     record.add.push(chessman);
     commit("setChess", chessman);
-    if (state.subStatus === "black") {
-      state.blackQuantum = chessman.position;
-      state.subStatus = "white";
-    } else if (state.subStatus === "white") {
-      state.whiteQuantum = chessman.position;
-      state.subStatus = "common";
-      const blackChess1 = state.board1.get(state.blackQuantum);
-      const whiteChess1 = state.board1.get(state.whiteQuantum);
-      const blackChess2 = state.board2.get(state.blackQuantum);
-      const whiteChess2 = state.board2.get(state.whiteQuantum);
-      blackChess1.brother = whiteChess1.position;
-      whiteChess1.brother = blackChess1.position;
-      blackChess2.brother = whiteChess2.position;
-      whiteChess2.brother = blackChess2.position;
-      blackChess2.type = "white";
-      whiteChess2.type = "black";
+    // 量子围棋规则：只有前两手是量子步
+    if (state.moves <= 2) {
+      // 前两手：量子步
+      if (state.subStatus === "black") {
+        state.blackQuantum = chessman.position;
+        state.subStatus = "white";
+      } else if (state.subStatus === "white") {
+        state.whiteQuantum = chessman.position;
+        state.subStatus = "common";
+        // 处理量子纠缠
+        const blackChess1 = state.board1.get(state.blackQuantum);
+        const whiteChess1 = state.board1.get(state.whiteQuantum);
+        const blackChess2 = state.board2.get(state.blackQuantum);
+        const whiteChess2 = state.board2.get(state.whiteQuantum);
+        if (blackChess1 && whiteChess1 && blackChess2 && whiteChess2) {
+          blackChess1.brother = whiteChess1.position;
+          whiteChess1.brother = blackChess1.position;
+          blackChess2.brother = whiteChess2.position;
+          whiteChess2.brother = blackChess2.position;
+          blackChess2.type = "white";
+          whiteChess2.type = "black";
+        }
+      }
+    } else {
+      // 第三手开始：普通模式，不再进行量子纠缠
+      state.subStatus = "normal";
     }
     // 在AI模式下，回合管理由AI响应决定，不在玩家落子时立即切换
     if (state.gameMode !== "ai") {
@@ -376,59 +386,44 @@ const actions = {
               console.log("Position", aiMove.position, "in Board1:", state.board1.get(aiMove.position));
               console.log("Position", aiMove.position, "in Board2:", state.board2.get(aiMove.position));
               
-              // 更新量子状态
-              if (state.subStatus === "black") {
-                state.blackQuantum = aiMove.position;
-                state.subStatus = "white";
-              } else if (state.subStatus === "white") {
-                state.whiteQuantum = aiMove.position;
-                state.subStatus = "common";
-                
-                // 处理量子纠缠 - 确保两个棋盘完全同步
-                const blackChess1 = state.board1.get(state.blackQuantum);
-                const whiteChess1 = state.board1.get(state.whiteQuantum);
-                const blackChess2 = state.board2.get(state.blackQuantum);
-                const whiteChess2 = state.board2.get(state.whiteQuantum);
-                
-                if (blackChess1 && whiteChess1 && blackChess2 && whiteChess2) {
-                  // 更新brother关系
-                  blackChess1.brother = whiteChess1.position;
-                  whiteChess1.brother = blackChess1.position;
-                  blackChess2.brother = whiteChess2.position;
-                  whiteChess2.brother = blackChess2.position;
+              // 更新量子状态 - 根据moves数量判断是否还在量子步阶段
+              if (state.moves <= 2) {
+                // 前两手：量子步
+                if (state.subStatus === "black") {
+                  state.blackQuantum = aiMove.position;
+                  state.subStatus = "white";
+                } else if (state.subStatus === "white") {
+                  state.whiteQuantum = aiMove.position;
+                  state.subStatus = "common";
                   
-                  // 交换类型，确保两个棋盘完全一致
-                  blackChess2.type = "white";
-                  whiteChess2.type = "black";
+                  // 处理量子纠缠 - 确保两个棋盘完全同步
+                  const blackChess1 = state.board1.get(state.blackQuantum);
+                  const whiteChess1 = state.board1.get(state.whiteQuantum);
+                  const blackChess2 = state.board2.get(state.blackQuantum);
+                  const whiteChess2 = state.board2.get(state.whiteQuantum);
                   
-                  console.log("Quantum entanglement applied, boards synchronized");
-                  console.log("Board1 state:", Object.fromEntries(state.board1));
-                  console.log("Board2 state:", Object.fromEntries(state.board2));
-                  
-                  // 验证两个棋盘的同步状态
-                  const board1Keys = Array.from(state.board1.keys()).sort();
-                  const board2Keys = Array.from(state.board2.keys()).sort();
-                  const keysMatch = JSON.stringify(board1Keys) === JSON.stringify(board2Keys);
-                  console.log("Board keys match:", keysMatch);
-                  console.log("Board1 keys:", board1Keys);
-                  console.log("Board2 keys:", board2Keys);
-                  
-                  // 验证每个位置的棋子状态
-                  for (const key of board1Keys) {
-                    const chess1 = state.board1.get(key);
-                    const chess2 = state.board2.get(key);
-                    if (chess1 && chess2) {
-                      const positionsMatch = chess1.position === chess2.position;
-                      const typesMatch = chess1.type === chess2.type;
-                      const brothersMatch = chess1.brother === chess2.brother;
-                      console.log(`Position ${key}: positions=${positionsMatch}, types=${typesMatch}, brothers=${brothersMatch}`);
-                    }
+                  if (blackChess1 && whiteChess1 && blackChess2 && whiteChess2) {
+                    // 更新brother关系
+                    blackChess1.brother = whiteChess1.position;
+                    whiteChess1.brother = blackChess1.position;
+                    blackChess2.brother = whiteChess2.position;
+                    whiteChess2.brother = blackChess2.position;
+                    
+                    // 交换类型，确保两个棋盘完全一致
+                    blackChess2.type = "white";
+                    whiteChess2.type = "black";
+                    
+                    console.log("Quantum entanglement applied, boards synchronized");
+                    
+                    // 重要：量子纠缠完成后，重置subStatus为black，让AI可以继续下棋
+                    state.subStatus = "black";
+                    console.log("Quantum entanglement completed, subStatus reset to black for next AI move");
                   }
-                  
-                  // 重要：量子纠缠完成后，重置subStatus为black，让AI可以继续下棋
-                  state.subStatus = "black";
-                  console.log("Quantum entanglement completed, subStatus reset to black for next AI move");
                 }
+              } else {
+                // 第三手开始：普通模式，不再进行量子纠缠
+                state.subStatus = "normal";
+                console.log("Normal mode: AI move applied without quantum entanglement");
               }
               
               // 在量子围棋中，AI下棋后，玩家应该能够继续下棋

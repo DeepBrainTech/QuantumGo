@@ -210,11 +210,20 @@ pub async fn update_player_move(
     let mut updated_room_info = room_info.clone();
     updated_room_info.moves = room_info.moves + 1;
     
-    // 如果moves变为奇数，说明轮到AI（白方）
-    if updated_room_info.moves % 2 == 1 {
-        updated_room_info.phase = Some("WhiteQuantum".to_string());
+    // 根据量子围棋规则更新阶段：只有前两手是量子步
+    if updated_room_info.moves < 2 {
+        // 前两手：量子步
+        if updated_room_info.moves % 2 == 1 {
+            updated_room_info.phase = Some("WhiteQuantum".to_string());
+        } else {
+            updated_room_info.phase = Some("BlackQuantum".to_string());
+        }
+    } else if updated_room_info.moves == 2 {
+        // 第二手完成后进入纠缠阶段
+        updated_room_info.phase = Some("Entanglement".to_string());
     } else {
-        updated_room_info.phase = Some("BlackQuantum".to_string());
+        // 第三手开始：普通模式
+        updated_room_info.phase = Some("Normal".to_string());
     }
     
     // 更新棋盘状态（如果提供）
@@ -366,7 +375,8 @@ pub async fn ai_move(
                 let new_phase = match quantum_state.quantum_phase {
                     QuantumPhase::BlackQuantum => "BlackQuantum", // 不应该发生
                     QuantumPhase::WhiteQuantum => "Entanglement",  // 白方下完进入纠缠
-                    QuantumPhase::Entanglement => "BlackQuantum",  // 纠缠完毕轮到黑方
+                    QuantumPhase::Entanglement => "Normal",       // 纠缠完毕进入普通模式
+                    QuantumPhase::Normal => "Normal",            // 普通模式保持普通模式
                 };
                 
                 println!("AI move will advance quantum phase from {:?} to {}", 
