@@ -46,7 +46,7 @@ const mutations = {
     
     // 量子围棋规则：前两手在两个棋盘上颜色相反
     let chessman2Type = chessman1.type;
-    if (state.moves <= 2) {
+    if (state.moves <= 3) {
       // 前两手：量子步，两个棋盘颜色相反
       chessman2Type = chessman1.type === "black" ? "white" : "black";
     }
@@ -366,11 +366,10 @@ const actions = {
                 return;
               }
               
-              // AI真的在下棋，创建棋子并添加到棋盘
-              // 量子围棋规则：前两手在两个棋盘上颜色相反
+
               let aiChessman2Type = aiMove.type as ChessmanType;
-              if (state.moves <= 2) {
-                // 前两手：量子步，两个棋盘颜色相反
+              if (state.moves <= 3) {
+
                 aiChessman2Type = aiMove.type === "black" ? "white" : "black";
               }
               
@@ -400,9 +399,9 @@ const actions = {
               console.log("Position", aiMove.position, "in Board1:", state.board1.get(aiMove.position));
               console.log("Position", aiMove.position, "in Board2:", state.board2.get(aiMove.position));
               
-              // 更新量子状态 - 根据moves数量判断是否还在量子步阶段
-              if (state.moves <= 2) {
-                // 前两手：量子步
+
+              if (state.moves <= 3) {
+
                 if (state.subStatus === "black") {
                   state.blackQuantum = aiMove.position;
                   state.subStatus = "white";
