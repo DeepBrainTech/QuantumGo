@@ -204,7 +204,16 @@ const initGame = async (data: Record<string, any>) => {
       const chessman = data.data.putChess as Chessman;
       console.log("Processing chess move:", chessman);
       if (chessman.position !== "0,0") {
-        store.dispatch("game/putChess", chessman);
+ 
+        if (game.value.gameMode === "pvp") {
+          const syncChessman = {
+            ...chessman,
+            brother: chessman.position
+          };
+          store.dispatch("game/putChess", syncChessman);
+        } else {
+          store.dispatch("game/putChess", chessman);
+        }
       }
       store.commit("game/setRound", true);
       progress.value = 100;

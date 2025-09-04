@@ -44,22 +44,30 @@ const mutations = {
   setChess(state: any, chessman1: Chessman) {
     state.board1.set(chessman1.position, chessman1);
     
-    // 量子围棋规则：PVP模式前4步交换颜色，AI模式前3步交换颜色
+    // 量子围棋规则：只有AI模式前3步交换颜色
     let chessman2Type = chessman1.type;
-    if (state.gameMode === "pvp" && state.moves <= 5) {
-      // PVP模式：前4步（黑棋前两步，白棋前两步）两个棋盘颜色相反
-      chessman2Type = chessman1.type === "black" ? "white" : "black";
-    } else if (state.gameMode === "ai" && state.moves <= 3) {
+    if (state.gameMode === "ai" && state.moves <= 3) {
       // AI模式：前3步两个棋盘颜色相反
       chessman2Type = chessman1.type === "black" ? "white" : "black";
     }
     
-    const chessman2: Chessman = {
-      position: chessman1.brother,
-      type: chessman2Type,
-      brother: chessman1.position
-    };
-    state.board2.set(chessman2.position, chessman2);
+    // PVP模式：两个棋盘完全独立，颜色相同
+    if (state.gameMode === "pvp") {
+      const chessman2: Chessman = {
+        position: chessman1.position, // 相同位置
+        type: chessman1.type,         // 相同颜色
+        brother: chessman1.position   // brother指向自己
+      };
+      state.board2.set(chessman2.position, chessman2);
+    } else {
+      // AI模式：保持brother关系用于量子纠缠
+      const chessman2: Chessman = {
+        position: chessman1.brother,
+        type: chessman2Type,
+        brother: chessman1.position
+      };
+      state.board2.set(chessman2.position, chessman2);
+    }
   },
 
   deleteChess(state: any, position: string) {
@@ -70,7 +78,14 @@ const mutations = {
       state.whiteLost++;
     }
     state.board1.delete(position);
-    state.board2.delete(chessInfo.brother);
+    
+    // PVP模式：两个棋盘完全独立，删除相同位置
+    if (state.gameMode === "pvp") {
+      state.board2.delete(position);
+    } else {
+      // AI模式：删除brother位置
+      state.board2.delete(chessInfo.brother);
+    }
   },
 
   initBoard(state: any) {
@@ -161,7 +176,17 @@ const actions = {
             state.whiteQuantum = chessman.position ?? "0,0";
           }
         }
-        commit("setChess", chessman);
+        
+        // PVP模式：确保brother指向自己，保持两个棋盘同步
+        if (state.gameMode === "pvp") {
+          const syncChessman = {
+            ...chessman,
+            brother: chessman.position
+          };
+          commit("setChess", syncChessman);
+        } else {
+          commit("setChess", chessman);
+        }
       });
       state.subStatus = count === 1 ? "white" : "common";
     }
@@ -222,10 +247,25 @@ const actions = {
     const records = state.records.splice(-2).reverse();
     records.forEach((record: ChessmanRecord) => {
       state.board1.delete(record.add[0].position);
-      state.board2.delete(record.add[0].brother);
+      
+      // PVP模式：两个棋盘完全独立，删除相同位置
+      if (state.gameMode === "pvp") {
+        state.board2.delete(record.add[0].position);
+      } else {
+        // AI模式：删除brother位置
+        state.board2.delete(record.add[0].brother);
+      }
+      
       record.reduce.forEach((chessman: Chessman) => {
         state.board1.set(chessman.position, chessman);
-        state.board2.set(chessman.brother, chessman);
+        
+        // PVP模式：两个棋盘完全独立，设置相同位置
+        if (state.gameMode === "pvp") {
+          state.board2.set(chessman.position, chessman);
+        } else {
+          // AI模式：设置brother位置
+          state.board2.set(chessman.brother, chessman);
+        }
       });
     });
   },
@@ -245,17 +285,16 @@ const actions = {
     const record = { add: [], reduce: [] } as ChessmanRecord;
     record.add.push(chessman);
     commit("setChess", chessman);
-    // 量子围棋规则：PVP模式前4步，AI模式前3步
-    const quantumMoves = state.gameMode === "pvp" ? 4 : 3;
-    if (state.moves <= quantumMoves) {
-      // 量子步
+    // 量子围棋规则：只有AI模式前3步
+    if (state.gameMode === "ai" && state.moves <= 3) {
+      // AI模式量子步
       if (state.subStatus === "black") {
         state.blackQuantum = chessman.position;
         state.subStatus = "white";
       } else if (state.subStatus === "white") {
         state.whiteQuantum = chessman.position;
         state.subStatus = "common";
-        // 处理量子纠缠
+        // AI模式处理量子纠缠
         const blackChess1 = state.board1.get(state.blackQuantum);
         const whiteChess1 = state.board1.get(state.whiteQuantum);
         const blackChess2 = state.board2.get(state.blackQuantum);
@@ -270,7 +309,7 @@ const actions = {
         }
       }
     } else {
-      // 量子步结束后：普通模式，不再进行量子纠缠
+      // PVP模式或AI模式量子步结束后：普通模式
       state.subStatus = "normal";
     }
     // 在AI模式下，回合管理由AI响应决定，不在玩家落子时立即切换
