@@ -44,10 +44,13 @@ const mutations = {
   setChess(state: any, chessman1: Chessman) {
     state.board1.set(chessman1.position, chessman1);
     
-    // 量子围棋规则：前两手在两个棋盘上颜色相反
+    // 量子围棋规则：PVP模式前4步交换颜色，AI模式前3步交换颜色
     let chessman2Type = chessman1.type;
-    if (state.moves <= 3) {
-      // 前两手：量子步，两个棋盘颜色相反
+    if (state.gameMode === "pvp" && state.moves <= 5) {
+      // PVP模式：前4步（黑棋前两步，白棋前两步）两个棋盘颜色相反
+      chessman2Type = chessman1.type === "black" ? "white" : "black";
+    } else if (state.gameMode === "ai" && state.moves <= 3) {
+      // AI模式：前3步两个棋盘颜色相反
       chessman2Type = chessman1.type === "black" ? "white" : "black";
     }
     
@@ -242,9 +245,10 @@ const actions = {
     const record = { add: [], reduce: [] } as ChessmanRecord;
     record.add.push(chessman);
     commit("setChess", chessman);
-    // 量子围棋规则：只有前两手是量子步
-    if (state.moves <= 2) {
-      // 前两手：量子步
+    // 量子围棋规则：PVP模式前4步，AI模式前3步
+    const quantumMoves = state.gameMode === "pvp" ? 4 : 3;
+    if (state.moves <= quantumMoves) {
+      // 量子步
       if (state.subStatus === "black") {
         state.blackQuantum = chessman.position;
         state.subStatus = "white";
@@ -266,7 +270,7 @@ const actions = {
         }
       }
     } else {
-      // 第三手开始：普通模式，不再进行量子纠缠
+      // 量子步结束后：普通模式，不再进行量子纠缠
       state.subStatus = "normal";
     }
     // 在AI模式下，回合管理由AI响应决定，不在玩家落子时立即切换
@@ -329,7 +333,7 @@ const actions = {
         console.error("Error updating player move state:", error);
       }
       
-      // 延迟一下让AI下棋，模拟思考时间
+
       setTimeout(async () => {
         try {
           console.log("Calling AI move API for room:", state.roomId, "user:", rootState.user.id);
@@ -352,7 +356,7 @@ const actions = {
             const aiMove = aiResponse.data.ai_move;
             console.log("AI move data:", aiMove);
             
-            // 检查AI是否真的在下棋，还是处于等待状态
+            // 检查AI是否真的在下棋
             const isRealMove = aiMove.type === "white" || aiMove.type === "black";
             const isValidPosition = /^\d+,\d+$/.test(aiMove.position);
             
@@ -449,14 +453,9 @@ const actions = {
               state.whitePoints = Math.floor((result1.whiteScore + result2.whiteScore) / 2);
               
             } else {
-              // AI处于等待状态或不需要下棋，只记录日志
-              console.log("AI not moving this turn:", aiMove.type, aiMove.position);
-              if (aiMove.type === "waiting") {
-                console.log("AI is waiting for player's move");
-              } else if (aiMove.type === "none") {
-                console.log("AI is in entanglement phase, no move needed");
-              }
-              // 不切换回合，不添加棋子，让玩家继续下棋
+              // AI返回无效响应，记录日志但不生成随机移动
+              console.log("AI returned invalid response:", aiMove.type, aiMove.position);
+              console.log("AI will not move this turn");
             }
           } else {
             console.error("AI move failed or invalid response:", aiResponse);
