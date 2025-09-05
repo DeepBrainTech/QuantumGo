@@ -77,6 +77,10 @@ const mutations = {
       };
       state.board2.set(chessman2.position, chessman2);
     }
+    
+    // 添加移动记录到records中（PVP和AI模式都需要）
+    const record = { add: [chessman1], reduce: [] } as ChessmanRecord;
+    state.records.push(record);
   },
 
   deleteChess(state: any, position: string) {
@@ -435,6 +439,10 @@ const actions = {
               // 直接操作两个棋盘，确保完全同步
               state.board1.set(aiMove.position, aiChessman1);
               state.board2.set(aiMove.position, aiChessman2);
+              
+              // 添加AI移动记录到records中
+              const aiRecord = { add: [aiChessman1], reduce: [] } as ChessmanRecord;
+              state.records.push(aiRecord);
               
               // 添加调试日志，验证两个棋盘同步
               console.log("AI move applied to both boards:");
