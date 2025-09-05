@@ -1,6 +1,5 @@
 import { Board, BoardModel, Chessman, ChessmanRecord, ChessmanRecords, ChessmanType } from "@/utils/types";
-import { canPutChess, getCapturedChess } from "@/utils/chess";
-import { calculateGoResult } from "@/utils/chess2";
+import { canPutChess, getCapturedChess, calculateGoResult } from "@/utils/chess";
 import api from "@/utils/api";
 
 const state = () => ({
