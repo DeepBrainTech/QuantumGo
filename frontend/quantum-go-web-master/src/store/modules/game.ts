@@ -51,14 +51,23 @@ const mutations = {
       chessman2Type = chessman1.type === "black" ? "white" : "black";
     }
     
-    // PVP模式：两个棋盘完全独立，颜色相同
     if (state.gameMode === "pvp") {
+      let chessman2Type = chessman1.type;
+      // PVP模式：前四步在棋盘B交换颜色（黑棋前两步+白棋前两步）
+      if (state.moves <= 4) {
+        chessman2Type = chessman1.type === "black" ? "white" : "black";
+        console.log(`PVP颜色交换: 第${state.moves}步, 棋盘A=${chessman1.type}, 棋盘B=${chessman2Type}, 位置=${chessman1.position}`);
+      } else {
+        console.log(`PVP正常模式: 第${state.moves}步, 棋盘A=${chessman1.type}, 棋盘B=${chessman2Type}, 位置=${chessman1.position}`);
+      }
+      
       const chessman2: Chessman = {
-        position: chessman1.position, // 相同位置
-        type: chessman1.type,         // 相同颜色
-        brother: chessman1.position   // brother指向自己
+        position: chessman1.position, 
+        type: chessman2Type,          // 前四步交换颜色，之后相同
+        brother: chessman1.position   
       };
       state.board2.set(chessman2.position, chessman2);
+      console.log(`棋盘B已设置: 位置=${chessman2.position}, 类型=${chessman2.type}`);
     } else {
       // AI模式：保持brother关系用于量子纠缠
       const chessman2: Chessman = {
@@ -240,7 +249,7 @@ const actions = {
     return res.data.room_id;
   },
 
-  async backChess({ state }: any) {
+  async backChess({ commit, state }: any) {
     if (state.records.length < 2) {
       return false;
     }
@@ -257,15 +266,8 @@ const actions = {
       }
       
       record.reduce.forEach((chessman: Chessman) => {
-        state.board1.set(chessman.position, chessman);
-        
-        // PVP模式：两个棋盘完全独立，设置相同位置
-        if (state.gameMode === "pvp") {
-          state.board2.set(chessman.position, chessman);
-        } else {
-          // AI模式：设置brother位置
-          state.board2.set(chessman.brother, chessman);
-        }
+        // 使用setChess mutation来确保颜色交换逻辑正确应用
+        commit("setChess", chessman);
       });
     });
   },

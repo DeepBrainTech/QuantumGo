@@ -200,19 +200,24 @@ const initGame = async (data: Record<string, any>) => {
     const data = JSON.parse(message);
     
     if (data.type === "updateChess") {
-      game.value.moves++;
       const chessman = data.data.putChess as Chessman;
       console.log("Processing chess move:", chessman);
       if (chessman.position !== "0,0") {
- 
+        // 先增加moves计数，再调用setChess
         if (game.value.gameMode === "pvp") {
           const syncChessman = {
             ...chessman,
             brother: chessman.position
           };
-          store.dispatch("game/putChess", syncChessman);
+          console.log(`WebSocket同步: 接收棋子 ${chessman.type} 在位置 ${chessman.position}, 当前moves=${game.value.moves}`);
+          // 先增加moves计数
+          game.value.moves++;
+          console.log(`WebSocket同步: moves增加到 ${game.value.moves}`);
+          store.commit("game/setChess", syncChessman);
         } else {
-          store.dispatch("game/putChess", chessman);
+          // 先增加moves计数
+          game.value.moves++;
+          store.commit("game/setChess", chessman);
         }
       }
       store.commit("game/setRound", true);
