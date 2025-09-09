@@ -73,8 +73,8 @@ onMounted(async () => {
 const createRoomVisible = ref(false);
 const form = reactive({
   gameMode: "pvp",
-  model: "",
-  countdown: ""
+  model: 19, // 默认19路棋盘
+  countdown: 30 // 默认30秒倒计时
 });
 
 const createRoom = async () => {
@@ -92,7 +92,13 @@ const createRoomSubmit = async () => {
     ElMessage({ message: lang.value.text.index.create_room_error, grouping: true, type: "error" });
     return;
   }
-  await router.push(`/room/${roomId}`);
+  
+  // 根据游戏模式跳转到不同的路由
+  if (gameMode === 'ai') {
+    await router.push(`/ai/${roomId}`);
+  } else {
+    await router.push(`/room/${roomId}`);
+  }
 };
 </script>
 

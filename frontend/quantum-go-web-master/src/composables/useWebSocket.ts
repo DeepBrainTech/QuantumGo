@@ -42,7 +42,6 @@ export function useWebSocket(url?: string) {
       ws = new WebSocket(wsUrl);
       
       ws.onopen = () => {
-        console.log('WebSocket 连接已建立');
         isConnected.value = true;
         isConnecting.value = false;
         reconnectState.attempts = 0;
@@ -52,7 +51,6 @@ export function useWebSocket(url?: string) {
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          console.log('收到 WebSocket 消息:', data);
           emit('message', data);
         } catch (error) {
           console.error('解析 WebSocket 消息失败:', error);
@@ -61,7 +59,6 @@ export function useWebSocket(url?: string) {
       };
       
       ws.onclose = (event) => {
-        console.log('WebSocket 连接已关闭:', event.code, event.reason);
         isConnected.value = false;
         isConnecting.value = false;
         emit('disconnected', { code: event.code, reason: event.reason });
@@ -119,7 +116,6 @@ export function useWebSocket(url?: string) {
     try {
       const message = typeof data === 'string' ? data : JSON.stringify(data);
       ws.send(message);
-      console.log('发送 WebSocket 消息:', data);
       return true;
     } catch (error) {
       console.error('发送 WebSocket 消息失败:', error);
@@ -133,13 +129,11 @@ export function useWebSocket(url?: string) {
    */
   const scheduleReconnect = () => {
     if (reconnectState.attempts >= reconnectState.maxAttempts) {
-      console.log('达到最大重连次数，停止重连');
       connectionError.value = '连接失败，请手动重试';
       return;
     }
     
     const delay = reconnectState.delay * Math.pow(reconnectState.backoff, reconnectState.attempts);
-    console.log(`将在 ${delay}ms 后尝试重连 (第 ${reconnectState.attempts + 1} 次)`);
     
     reconnectTimer = window.setTimeout(() => {
       reconnectState.attempts++;

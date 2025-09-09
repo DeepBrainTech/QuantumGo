@@ -41,8 +41,6 @@ export function useGame() {
     
     board1.value.clear();
     board2.value.clear();
-    
-    console.log('游戏已初始化', { size });
   };
   
   /**
@@ -50,7 +48,6 @@ export function useGame() {
    */
   const startGame = () => {
     gameState.gameStatus = GAME_STATUS.PLAYING;
-    console.log('游戏开始');
   };
   
   /**
@@ -61,7 +58,6 @@ export function useGame() {
    */
   const tryPlaceChess = (position: string, board: 'board1' | 'board2' = 'board1'): boolean => {
     if (!canMakeMove.value) {
-      console.log('当前不能下棋');
       return false;
     }
     
@@ -69,13 +65,11 @@ export function useGame() {
     
     // 检查位置是否已被占用
     if (currentBoard.has(position)) {
-      console.log('位置已被占用:', position);
       return false;
     }
     
     // 检查是否可以下棋（围棋规则）
     if (!canPutChess(currentBoard, position, gameState.currentPlayer, gameState.boardSize)) {
-      console.log('违反围棋规则，不能在此位置下棋:', position);
       return false;
     }
     
@@ -99,7 +93,6 @@ export function useGame() {
       ? CHESS_TYPES.WHITE 
       : CHESS_TYPES.BLACK;
     
-    console.log('下棋成功:', { position, player: chess.type, captured: captured.size });
     return true;
   };
   
@@ -109,7 +102,6 @@ export function useGame() {
    */
   const calculateGameResult = () => {
     const result = calculateWinner(board1.value, gameState.boardSize);
-    console.log('游戏结果:', result);
     return result;
   };
   
@@ -119,7 +111,6 @@ export function useGame() {
   const endGame = () => {
     gameState.gameStatus = GAME_STATUS.FINISHED;
     const result = calculateGameResult();
-    console.log('游戏结束:', result);
     return result;
   };
   
@@ -128,7 +119,6 @@ export function useGame() {
    */
   const resetGame = () => {
     initGame(gameState.boardSize);
-    console.log('游戏已重置');
   };
   
   return {

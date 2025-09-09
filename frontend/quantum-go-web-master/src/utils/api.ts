@@ -19,7 +19,10 @@ class Api {
       }
       return { success: true, status: response.status, data: response.data };
     } catch (error: any) {
-      return { success: false, status: error.status, data: {} };
+      console.error("API request failed:", error);
+      const status = error.response?.status || error.status || 0;
+      const data = error.response?.data || {};
+      return { success: false, status, data };
     }
   }
 
@@ -41,7 +44,6 @@ class Api {
 
   public async userRegister(user_name: string, row_password: string): Promise<Response> {
     const user_password = CryptoJS.MD5(row_password).toString(CryptoJS.enc.Hex);
-    console.log(user_password, row_password);
     const data = { username: user_name, password: user_password };
     return this.request("/userRegister", data);
   }
@@ -51,21 +53,6 @@ class Api {
     return this.request("/getLeaderboard", data);
   }
 
-  public async aiMove(roomId: string, userId: string, gameMode: string = "ai", boardState?: any): Promise<Response> {
-    const data = { 
-      room_id: roomId, 
-      user_id: userId, 
-      game_mode: gameMode,
-      board_state: boardState // 传递当前棋盘状态
-    };
-    return this.request("/aiMove", data);
-  }
-
-  // 更新玩家移动状态接口
-  public async updatePlayerMove(roomId: string, userId: string, position: string, gameMode: string, board?: any): Promise<Response> {
-    const data = { room_id: roomId, user_id: userId, position: position, game_mode: gameMode, board: board };
-    return this.request("/updatePlayerMove", data);
-  }
 }
 
 const api = new Api(Config.apiUrl);

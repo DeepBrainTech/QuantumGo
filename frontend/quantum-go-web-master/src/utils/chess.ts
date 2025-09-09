@@ -84,9 +84,10 @@ const calculateGroupLiberties = (board: Board, group: Set<Position>, boardSize: 
  * @param position 位置
  * @param type 棋子类型
  * @param boardSize 棋盘大小
+ * @param lastMove 上一步的位置（用于劫检测）
  * @returns 是否可以放置
  */
-export function canPutChess(board: Board, position: Position, type: ChessmanType, boardSize: BoardModel): boolean {
+export function canPutChess(board: Board, position: Position, type: ChessmanType, boardSize: BoardModel, lastMove?: Position): boolean {
   if (board.has(position)) return false;
   
   const tempBoard = new Map(board);
@@ -96,7 +97,16 @@ export function canPutChess(board: Board, position: Position, type: ChessmanType
   captured.forEach(pos => finalBoard.delete(pos));
   
   const currentGroup = [...findAllGroups(finalBoard, type, boardSize)].find(g => g.has(position));
-  return !!currentGroup && calculateGroupLiberties(finalBoard, currentGroup, boardSize) > 0;
+  if (!currentGroup || calculateGroupLiberties(finalBoard, currentGroup, boardSize) === 0) {
+    return false;
+  }
+  
+  // 劫检测：如果只吃了一个子，且这个子就是上一步下的位置，则禁止
+  if (lastMove && captured.size === 1 && captured.has(lastMove)) {
+    return false;
+  }
+  
+  return true;
 }
 
 /**

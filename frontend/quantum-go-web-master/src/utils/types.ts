@@ -60,7 +60,7 @@ export type GameStatus = "waiting" | "playing" | "finished" | "paused";
 /**
  * 玩家类型
  */
-export type PlayerType = "human" | "ai";
+export type PlayerType = "human";
 
 /**
  * 游戏结果类型

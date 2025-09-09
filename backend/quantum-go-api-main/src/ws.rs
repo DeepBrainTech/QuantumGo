@@ -3,6 +3,7 @@ use crate::entity::Room;
 use crate::entity::WsSender;
 use crate::entity::{Chessman, RoomInfo, GameResult};
 use crate::rating::RatingSystem;
+// AI功能已移除
 use axum::{
     extract::{
         Path, State,
@@ -167,7 +168,7 @@ async fn update_room_visitor(
             white_lost: room_info.white_lost,
             model: room_info.model,
             chessman_records: room_info.chessman_records.clone(),
-            phase: room_info.phase.clone(), // 新增：复制phase字段
+            phase: room_info.phase.clone(),
         })
         .await
 }
@@ -257,6 +258,8 @@ async fn handle_update_chess(
             .await
             .send(Message::Text(to_string(&resp).unwrap().into()))
             .await;
+
+        // AI功能已移除
     }
 }
 
@@ -286,7 +289,7 @@ async fn update_game_state(
             white_lost: data.white_lost,
             model: room_info.model.clone(),
             chessman_records: data.chessman_records.clone(),
-            phase: room_info.phase.clone(), // 新增：复制phase字段
+            phase: room_info.phase.clone(),
         })
         .await
 }
@@ -334,7 +337,7 @@ async fn update_winner(
             white_lost: room_info.white_lost,
             model: room_info.model.clone(),
             chessman_records: room_info.chessman_records.clone(),
-            phase: room_info.phase.clone(), // 新增：复制phase字段
+            phase: room_info.phase.clone(),
         })
         .await?;
 

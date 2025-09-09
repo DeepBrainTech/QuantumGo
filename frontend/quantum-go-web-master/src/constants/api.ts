@@ -19,7 +19,6 @@ export const API_ENDPOINTS = {
   CREATE_ROOM: '/createRoom',
   GET_GAME_INFO: '/getGameInfo',
   UPDATE_PLAYER_MOVE: '/updatePlayerMove',
-  AI_MOVE: '/aiMove',
   
   // 排行榜
   GET_LEADERBOARD: '/getLeaderboard',
