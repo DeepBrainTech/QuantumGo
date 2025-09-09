@@ -65,7 +65,6 @@ const testResults = ref<Record<string, boolean>>({});
  * 运行所有测试
  */
 const runAllTests = () => {
-  console.log('运行所有测试');
   // TODO: 实现测试逻辑
 };
 
@@ -74,7 +73,6 @@ const runAllTests = () => {
  * @param testName 测试名称
  */
 const runTest = (testName: string) => {
-  console.log(`运行测试: ${testName}`);
   // TODO: 实现单个测试逻辑
 };
 

@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory, RouteRecordRaw } from "vue-router";
 import IndexPage from "../views/IndexPage/index.vue";
 import RoomPage from "../views/RoomPage/index.vue";
+import AIPage from "../views/AIPage/index.vue";
 import LoginPage from "../views/LoginPage/index.vue";
 import LeaderboardPage from "../views/LeaderboardPage/index.vue";
 
@@ -24,6 +25,11 @@ const routes: Array<RouteRecordRaw> = [
     path: "/leaderboard",
     name: "Leaderboard",
     component: LeaderboardPage
+  },
+  {
+    path: "/ai/:id",
+    name: "AIBattle",
+    component: AIPage
   },
   // {
   //   path: "/join/:id",

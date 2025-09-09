@@ -191,8 +191,8 @@ impl Database {
         sqlx::query_as::<_, RoomInfo>(
             r#"
             INSERT INTO room_infos (
-                room_id, owner_id, visitor_id, status, round, winner, board, countdown, moves, black_lost, white_lost, model, chessman_records
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *
+                room_id, owner_id, visitor_id, status, round, winner, board, countdown, moves, black_lost, white_lost, model, chessman_records, phase
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING *
             "#,
         )
         .bind(room_info.room_id)
@@ -208,6 +208,7 @@ impl Database {
         .bind(room_info.white_lost)
         .bind(room_info.model)
         .bind(&room_info.chessman_records)
+        .bind(&room_info.phase)
         .fetch_one(&self.pool)
         .await
     }
@@ -249,8 +250,7 @@ impl Database {
         .bind(room_info.white_lost)       // $9
         .bind(room_info.model)            // $10
         .bind(&room_info.chessman_records)// $11
-        .bind(&room_info.phase)           // $12 <- 新增 phase 字段
-        .bind(room_info.id)               // $13
+        .bind(room_info.id)               // $12
         .fetch_one(&self.pool)
         .await
     }

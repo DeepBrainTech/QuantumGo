@@ -21,8 +21,7 @@ export const GAME_STATUS = {
 
 // 玩家类型
 export const PLAYER_TYPES = {
-  HUMAN: 'human',
-  AI: 'ai'
+  HUMAN: 'human'
 } as const;
 
 // 贴目规则
@@ -45,8 +44,7 @@ export const QUANTUM_PHASES = {
 // 游戏模式
 export const GAME_MODES = {
   LOCAL: 'local',
-  ONLINE: 'online',
-  AI: 'ai'
+  ONLINE: 'online'
 } as const;
 
 // 难度等级

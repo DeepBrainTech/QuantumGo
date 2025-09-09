@@ -40,7 +40,6 @@ const currentPhase = ref('classical');
  */
 const selectPhase = (phaseId: string) => {
   currentPhase.value = phaseId;
-  console.log('选择量子相位:', phaseId);
   // TODO: 实现相位切换逻辑
 };
 

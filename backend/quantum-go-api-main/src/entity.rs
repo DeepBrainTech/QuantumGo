@@ -31,7 +31,7 @@ pub struct RoomInfo {
     pub white_lost: i32,
     pub model: i32,
     pub chessman_records: serde_json::Value,
-    pub phase: Option<String>, // 量子阶段字段，存储为字符串
+    pub phase: Option<String>,
 }
 
 #[derive(Clone, Deserialize, Serialize, FromRow)]
