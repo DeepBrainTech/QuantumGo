@@ -20,9 +20,7 @@ const state = () => ({
   model: 9 as BoardModel,
   board1: new Map() as Board,
   board2: new Map() as Board,
-  records: [] as ChessmanRecords,
-  phase: null as string | null,
-  gameMode: "pvp" as "pvp" | "ai"
+  records: [] as ChessmanRecords
 });
 
 const mutations = {
@@ -36,22 +34,6 @@ const mutations = {
 
   setRound(state: any, round: boolean) {
     state.round = round;
-  },
-
-  setGameMode(state: any, mode: "pvp" | "ai") {
-    state.gameMode = mode;
-  },
-
-  setCamp(state: any, camp: ChessmanType) {
-    state.camp = camp;
-  },
-
-  setModel(state: any, model: BoardModel) {
-    state.model = model;
-  },
-
-  setCountdown(state: any, countdown: number) {
-    state.countdown = countdown;
   },
 
   setChess(state: any, chessman1: Chessman) {
@@ -88,7 +70,7 @@ const mutations = {
 
 const actions = {
   async setGameInfo({ commit, rootState, state }: any, data: Record<string, any>) {
-    const { room_id, status, owner_id, round, board, moves, white_lost, black_lost, countdown, model, chessman_records, phase } = data;
+    const { room_id, status, owner_id, round, board, moves, white_lost, black_lost, countdown, model, chessman_records } = data;
     const boardMap = new Map(JSON.stringify(board) === "{}" ? [] : board);
     state.board1.clear();
     state.board2.clear();
@@ -100,7 +82,6 @@ const actions = {
     state.countdown = countdown;
     state.model = model;
     state.records = chessman_records ?? [];
-    state.phase = phase || null;
     if (status === "waiting" && data.visitor_id) {
       state.status = "playing";
     }
@@ -144,19 +125,8 @@ const actions = {
     commit("initBoard");
   },
 
-  async createRoom({ commit, rootState }: any, data: { countdown: number, model: number, gameMode?: string }): Promise<false | string> {
-    const mode = data.gameMode || "pvp";
-    commit("setGameMode", mode);
-    
-    if (mode === "ai") {
-      // AI模式保存棋盘尺寸和倒计时
-      commit("setModel", data.model);
-      commit("setCountdown", data.countdown);
-      // AI模式不需要调用后端API，直接返回一个虚拟房间ID
-      return "ai_" + Date.now();
-    }
-    
-    const res = await api.createRoom(rootState.user.id, data.model, data.countdown, mode);
+  async createRoom({ commit, rootState }: any, data: { countdown: number, model: number }): Promise<false | string> {
+    const res = await api.createRoom(rootState.user.id, data.model, data.countdown);
     if (!res.success) {
       return false;
     }
@@ -182,32 +152,16 @@ const actions = {
     if (state.status !== "playing") {
       return false;
     }
-    
     const chessman: Chessman = { position: payload.position, type: payload.type, brother: payload.position };
-    
-    // 获取上一步的位置（用于劫检测）
-    const lastMove = state.records.length > 0 ? state.records[state.records.length - 1].add[0]?.position : undefined;
-    
-    const canPut1 = canPutChess(state.board1, payload.position, chessman.type, state.model, lastMove);
-    const canPut2 = canPutChess(state.board2, payload.position, chessman.type, state.model, lastMove);
-    
-    if (!canPut1 || !canPut2) {
+    if (!canPutChess(state.board1, payload.position, chessman.type, state.model) || !canPutChess(state.board2, payload.position, chessman.type, state.model)) {
       return false;
     }
-    
-    // 量子围棋逻辑（PVP和AI模式都使用）
     const record = { add: [], reduce: [] } as ChessmanRecord;
     record.add.push(chessman);
     commit("setChess", chessman);
     if (state.subStatus === "black") {
       state.blackQuantum = chessman.position;
       state.subStatus = "white";
-      // 立即在棋盘b中显示白色棋子（量子纠缠）
-      const blackChess1 = state.board1.get(state.blackQuantum);
-      const blackChess2 = state.board2.get(state.blackQuantum);
-      if (blackChess1 && blackChess2) {
-        blackChess2.type = "white";
-      }
     } else if (state.subStatus === "white") {
       state.whiteQuantum = chessman.position;
       state.subStatus = "common";
@@ -219,23 +173,16 @@ const actions = {
       whiteChess1.brother = blackChess1.position;
       blackChess2.brother = whiteChess2.position;
       whiteChess2.brother = blackChess2.position;
-      // 现在棋盘b中的黑棋已经是白色了，需要将白棋改为黑色
-      blackChess2.type = "white"; // 保持白色（黑棋在棋盘b中显示为白色）
-      whiteChess2.type = "black"; // 白棋在棋盘b中显示为黑色
-      
-      // 更新records中最后一步白棋的brother信息，确保红点显示正确
-      if (state.records.length > 0) {
-        const lastRecord = state.records[state.records.length - 1];
-        if (lastRecord.add.length > 0 && lastRecord.add[0].type === "white") {
-          lastRecord.add[0].brother = whiteChess2.position;
-        }
-      }
+      blackChess2.type = "white";
+      whiteChess2.type = "black";
     }
     commit("setRound", !state.round);
     const capturedChess1 = getCapturedChess(state.board1, chessman.type, state.model);
     const capturedChess2_row = getCapturedChess(state.board2, chessman.type, state.model);
+    console.log(capturedChess1, capturedChess2_row);
     const capturedChess2 = new Set([...capturedChess2_row].map(position => state.board2.get(position).brother));
     const capturedChess = new Set([...capturedChess1, ...capturedChess2]);
+    console.log(capturedChess);
     capturedChess.forEach(chessPosition => {
       record.reduce.push(state.board1.get(chessPosition));
       commit("deleteChess", chessPosition);
@@ -243,12 +190,11 @@ const actions = {
     state.records.push(record);
     const result1 = calculateGoResult(state.board1, state.model, state.blackLost, state.whiteLost);
     const result2 = calculateGoResult(state.board2, state.model, state.blackLost, state.whiteLost);
+    console.log(result1, result2);
     state.blackPoints = Math.floor((result1.blackScore + result2.blackScore) / 2);
     state.whitePoints = Math.floor((result1.whiteScore + result2.whiteScore) / 2);
-    
     return true;
-  },
-
+  }
 };
 
 export default {

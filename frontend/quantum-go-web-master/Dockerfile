@@ -1,5 +1,11 @@
 FROM node:alpine AS builder
 
+# 允许在构建阶段注入 Vite 环境变量，指向本地后端
+ARG VITE_API_URL
+ARG VITE_WS_URL
+ENV VITE_API_URL=${VITE_API_URL}
+ENV VITE_WS_URL=${VITE_WS_URL}
+
 RUN npm install -g pnpm
 
 WORKDIR /app
