@@ -1,5 +1,5 @@
 import { Board, BoardModel, Chessman, ChessmanRecord, ChessmanRecords, ChessmanType } from "@/utils/types";
-import { canPutChess, getCapturedChess } from "@/utils/chess";
+import { canPutChess, getCapturedChess, canPutChessSuperko, hashBoard } from "@/utils/chess";
 import { calculateGoResult } from "@/utils/chess2";
 import api from "@/utils/api";
 
@@ -20,6 +20,12 @@ const state = () => ({
   model: 9 as BoardModel,
   board1: new Map() as Board,
   board2: new Map() as Board,
+  // 记录各棋盘最后一步的位置，用于每盘面的劫检测
+  lastMove1: null as string | null,
+  lastMove2: null as string | null,
+  // 位置超劫：各盘面局面历史哈希
+  history1: new Set<string>() as Set<string>,
+  history2: new Set<string>() as Set<string>,
   records: [] as ChessmanRecords,
   phase: null as string | null,
   gameMode: "pvp" as "pvp" | "ai"
@@ -58,7 +64,8 @@ const mutations = {
     state.board1.set(chessman1.position, chessman1);
     const chessman2: Chessman = {
       position: chessman1.brother,
-      type: chessman1.type,
+      // 盘面2显示与逻辑均采用相反颜色
+      type: chessman1.type === "black" ? "white" : "black",
       brother: chessman1.position
     };
     state.board2.set(chessman2.position, chessman2);
@@ -83,6 +90,13 @@ const mutations = {
     state.blackQuantum = "";
     state.whiteQuantum = "";
     state.round = true;
+    state.lastMove1 = null;
+    state.lastMove2 = null;
+    state.history1.clear();
+    state.history2.clear();
+    // 记录初始空局面
+    state.history1.add("");
+    state.history2.add("");
   }
 };
 
@@ -124,6 +138,13 @@ const actions = {
         commit("setChess", chessman);
       });
       state.subStatus = count === 1 ? "white" : "common";
+      // 重建局面历史哈希（用于位置超劫）
+      state.history1.clear();
+      state.history2.clear();
+      state.history1.add(hashBoard(state.board1));
+      state.history2.add(hashBoard(state.board2));
+      state.lastMove1 = null;
+      state.lastMove2 = null;
     }
   },
 
@@ -185,11 +206,27 @@ const actions = {
     
     const chessman: Chessman = { position: payload.position, type: payload.type, brother: payload.position };
     
-    // 获取上一步的位置（用于劫检测）
-    const lastMove = state.records.length > 0 ? state.records[state.records.length - 1].add[0]?.position : undefined;
-    
-    const canPut1 = canPutChess(state.board1, payload.position, chessman.type, state.model, lastMove);
-    const canPut2 = canPutChess(state.board2, payload.position, chessman.type, state.model, lastMove);
+    // 每个棋盘分别进行合法性检测：
+    // 棋盘1落子颜色与玩家相同；棋盘2为相反颜色
+    const opposite = (t: ChessmanType): ChessmanType => (t === "black" ? "white" : "black");
+    const type1: ChessmanType = chessman.type;
+    const type2: ChessmanType = opposite(chessman.type);
+    const canPut1 = canPutChessSuperko(
+      state.board1,
+      payload.position,
+      type1,
+      state.model,
+      state.lastMove1 ?? undefined,
+      state.history1
+    );
+    const canPut2 = canPutChessSuperko(
+      state.board2,
+      payload.position,
+      type2,
+      state.model,
+      state.lastMove2 ?? undefined,
+      state.history2
+    );
     
     if (!canPut1 || !canPut2) {
       return false;
@@ -208,6 +245,9 @@ const actions = {
       if (blackChess1 && blackChess2) {
         blackChess2.type = "white";
       }
+      // 更新各棋盘的最后一步位置
+      state.lastMove1 = chessman.position;
+      state.lastMove2 = chessman.position;
     } else if (state.subStatus === "white") {
       state.whiteQuantum = chessman.position;
       state.subStatus = "common";
@@ -230,10 +270,14 @@ const actions = {
           lastRecord.add[0].brother = whiteChess2.position;
         }
       }
+      // 更新各棋盘的最后一步位置
+      state.lastMove1 = chessman.position;
+      state.lastMove2 = chessman.position;
     }
     commit("setRound", !state.round);
-    const capturedChess1 = getCapturedChess(state.board1, chessman.type, state.model);
-    const capturedChess2_row = getCapturedChess(state.board2, chessman.type, state.model);
+    // 计算各棋盘吃子：棋盘1按当前棋子颜色，棋盘2用相反颜色
+    const capturedChess1 = getCapturedChess(state.board1, type1, state.model);
+    const capturedChess2_row = getCapturedChess(state.board2, type2, state.model);
     const capturedChess2 = new Set([...capturedChess2_row].map(position => state.board2.get(position).brother));
     const capturedChess = new Set([...capturedChess1, ...capturedChess2]);
     capturedChess.forEach(chessPosition => {
@@ -241,6 +285,9 @@ const actions = {
       commit("deleteChess", chessPosition);
     });
     state.records.push(record);
+    // 更新局面历史（位置超劫）
+    state.history1.add(hashBoard(state.board1));
+    state.history2.add(hashBoard(state.board2));
     const result1 = calculateGoResult(state.board1, state.model, state.blackLost, state.whiteLost);
     const result2 = calculateGoResult(state.board2, state.model, state.blackLost, state.whiteLost);
     state.blackPoints = Math.floor((result1.blackScore + result2.blackScore) / 2);

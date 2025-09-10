@@ -73,8 +73,10 @@ const progressLabel = (percentage: number) => {
 const progress = ref(0);
 let timer: NodeJS.Timeout | undefined;
 
-// AI思考状态
+// AI思考状态与弃权跟踪
 const isAIThinking = ref(false);
+const playerPassed = ref(false);
+const aiPassed = ref(false);
 
 // 初始化AI游戏
 onMounted(() => {
@@ -99,6 +101,8 @@ const initAIGame = () => {
   game.value.subStatus = 'black'; // 从黑棋开始
   game.value.blackQuantum = '';
   game.value.whiteQuantum = '';
+  playerPassed.value = false;
+  aiPassed.value = false;
   
   console.log('AI游戏已初始化');
 };
@@ -285,6 +289,20 @@ const makeAIMove = async () => {
   
   const aiMove = getAIMove();
   if (!aiMove) {
+    // AI 无路可走 -> pass
+    aiPassed.value = true;
+    // 双方连续弃权 -> 终局
+    if (playerPassed.value) {
+      store.commit('game/setStatus', 'finished');
+      store.commit('game/setRound', false);
+      const winner = game.value.blackPoints - game.value.whitePoints - 7 > 0 ? '黑方' : '白方';
+      ElMessageBox.alert(`游戏结束，${winner}胜`, 'Finish', { confirmButtonText: 'OK' });
+      isAIThinking.value = false;
+      return;
+    }
+    // 切回玩家回合
+    store.commit('game/setRound', true);
+    isAIThinking.value = false;
     return;
   }
   
@@ -293,9 +311,24 @@ const makeAIMove = async () => {
   // 使用store的putChess action，与PVP模式保持一致
   const result = await store.dispatch('game/putChess', { position: aiMove, type: 'white' });
   if (!result) {
+    // 落子失败，视为 pass
+    aiPassed.value = true;
+    if (playerPassed.value) {
+      store.commit('game/setStatus', 'finished');
+      store.commit('game/setRound', false);
+      const winner = game.value.blackPoints - game.value.whitePoints - 7 > 0 ? '黑方' : '白方';
+      ElMessageBox.alert(`游戏结束，${winner}胜`, 'Finish', { confirmButtonText: 'OK' });
+      isAIThinking.value = false;
+      return;
+    }
+    store.commit('game/setRound', true);
+    isAIThinking.value = false;
     return;
   }
   
+  // AI成功落子，清除弃权标记
+  aiPassed.value = false;
+  playerPassed.value = false;
   // 清除AI思考状态
   isAIThinking.value = false;
 };
@@ -342,6 +375,9 @@ const putChess = async (position: string) => {
     return;
   }
   
+  // 玩家成功落子，清除弃权标记
+  playerPassed.value = false;
+  aiPassed.value = false;
   // 延迟让AI下棋，让玩家看到黑棋完全落定
   isAIThinking.value = true; // 设置AI思考状态
   setTimeout(() => {
@@ -394,6 +430,15 @@ const passChess = () => {
   // 玩家弃权，轮到AI
   store.commit('game/setRound', false);
   game.value.moves++;
+  // 双方连续弃权 -> 终局
+  if (aiPassed.value) {
+    store.commit('game/setStatus', 'finished');
+    store.commit('game/setRound', false);
+    const winner = game.value.blackPoints - game.value.whitePoints - 7 > 0 ? '黑方' : '白方';
+    ElMessageBox.alert(`游戏结束，${winner}胜`, 'Finish', { confirmButtonText: 'OK' });
+    return;
+  }
+  playerPassed.value = true;
   
   // AI继续下棋
   setTimeout(() => {

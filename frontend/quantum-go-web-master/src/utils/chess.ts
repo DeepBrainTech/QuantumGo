@@ -110,6 +110,71 @@ export function canPutChess(board: Board, position: Position, type: ChessmanType
 }
 
 /**
+ * 计算假设落子后的最终棋盘（包含提子后状态）
+ * 若属于自杀则返回 null
+ */
+export function computeFinalBoard(
+  board: Board,
+  position: Position,
+  type: ChessmanType,
+  boardSize: BoardModel
+): Board | null {
+  if (board.has(position)) return null;
+
+  const tempBoard = new Map(board);
+  tempBoard.set(position, { position, type, brother: "" });
+  const captured = getCapturedChess(tempBoard, type, boardSize);
+  const finalBoard = new Map(tempBoard);
+  captured.forEach(pos => finalBoard.delete(pos));
+  const currentGroup = [...findAllGroups(finalBoard, type, boardSize)].find(g => g.has(position));
+  if (!currentGroup || calculateGroupLiberties(finalBoard, currentGroup, boardSize) === 0) {
+    return null;
+  }
+  return finalBoard;
+}
+
+/**
+ * 对棋盘进行稳定哈希（用于超劫）；按位置排序，序列化颜色
+ */
+export function hashBoard(board: Board): string {
+  const entries = Array.from(board.entries())
+    .map(([pos, stone]) => [pos, stone.type] as [string, ChessmanType])
+    .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+  return entries.map(([pos, t]) => `${pos}:${t[0]}`).join("|");
+}
+
+/**
+ * 可选超劫检测的合法性判断（若提供 history 集合，则执行位置超劫）
+ */
+export function canPutChessSuperko(
+  board: Board,
+  position: Position,
+  type: ChessmanType,
+  boardSize: BoardModel,
+  lastMove?: Position,
+  history?: Set<string>
+): boolean {
+  // 基本合法性 + 简单劫
+  const tempBoard = new Map(board);
+  if (tempBoard.has(position)) return false;
+  tempBoard.set(position, { position, type, brother: "" });
+  const captured = getCapturedChess(tempBoard, type, boardSize);
+  const finalBoard = new Map(tempBoard);
+  captured.forEach(p => finalBoard.delete(p));
+
+  const currentGroup = [...findAllGroups(finalBoard, type, boardSize)].find(g => g.has(position));
+  if (!currentGroup || calculateGroupLiberties(finalBoard, currentGroup, boardSize) === 0) return false;
+  if (lastMove && captured.size === 1 && captured.has(lastMove)) return false;
+
+  // 位置超劫（可选）
+  if (history) {
+    const h = hashBoard(finalBoard);
+    if (history.has(h)) return false;
+  }
+  return true;
+}
+
+/**
  * 获取被吃掉的棋子位置
  * @param board 棋盘状态
  * @param lastMoveType 最后一步的棋子类型

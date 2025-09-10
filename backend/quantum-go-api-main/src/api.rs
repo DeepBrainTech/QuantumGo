@@ -75,7 +75,7 @@ pub async fn create_room(
 ) -> ApiResult<serde_json::Value> {
     let room_id = Uuid::new_v4();
     
-    // AI功能已禁用，所有房间都使用PVP模式
+ 
     let (status, phase) = ("waiting".to_string(), None);
     
     let room_info = RoomInfo {

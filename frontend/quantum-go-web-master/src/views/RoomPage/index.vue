@@ -86,6 +86,8 @@ const barrage = ref();
 
 let ws: any;
 const wsStatus = ref(false);
+// 连续弃权检测（PVP）
+const lastActionWasPass = ref(false);
 
 let roomId: string;
 onMounted(async () => {
@@ -147,7 +149,19 @@ const initGame = async (data: Record<string, any>) => {
       game.value.moves++;
       const chessman = data.data.putChess as Chessman;
       if (chessman.position !== "0,0") {
+        // 正常落子
+        lastActionWasPass.value = false;
         store.dispatch("game/putChess", chessman);
+      } else {
+        // 对方 PASS 逻辑
+        if (lastActionWasPass.value) {
+          // 连续两次 PASS，终局并判胜
+          const winner = game.value.blackPoints - game.value.whitePoints - 7 > 0 ? "black" : "white";
+          ws.send(JSON.stringify({ type: "setWinner", data: { winner } }));
+          return;
+        }
+        lastActionWasPass.value = true;
+        // 切换到我方回合与倒计时
       }
       // 同步board2状态（如果存在）
       if (data.data.board2) {
@@ -172,36 +186,14 @@ const initGame = async (data: Record<string, any>) => {
           clearInterval(timer);
         }
       }, 100);
-      let status = false;
-      for (let i = 0; i < 81; i++) {
-        const x = Math.floor((i - 1) / 9) + 1;
-        const y = (i - 1) % 9 + 1;
-        const position = `${x},${y}`;
-        if (canPutChess(game.value.board1, position, chessman.type, game.value.model) || canPutChess(game.value.board2, position, chessman.type, game.value.model)) {
-          status = true;
-          break;
-        }
-      }
-      if (!status) {
-        let winner: string;
-        if (game.value.blackPoints - game.value.whiteLost - 7 > 0) {
-          winner = "black";
-        } else {
-          winner = "white";
-        }
-        ws.send(JSON.stringify({ type: "setWinner", data: { winner: winner } }));
-        if (winner === game.value.camp) {
-          ElMessageBox.alert(lang.value.text.room.winner, "Finish", { confirmButtonText: "OK" });
-        } else {
-          ElMessageBox.alert(lang.value.text.room.loser, "Finish", { confirmButtonText: "OK" });
-        }
-      }
+      // 取消不可靠的“无合法着点”判赢逻辑，改用双 PASS 触发终局
     } else if (data.type === "startGame") {
       game.value.status = "playing";
       ElMessage.success(lang.value.text.room.start_game);
     } else if (data.type === "setWinner") {
       store.commit("game/setStatus", "finished");
       store.commit("game/setRound", false);
+      lastActionWasPass.value = false;
       const winner = data.data.winner;
       if (winner === game.value.camp) {
         ElMessageBox.alert(lang.value.text.room.winner, "Finish", { confirmButtonText: "OK" });
@@ -295,6 +287,12 @@ const passChess = () => {
   clearInterval(timer);
   progress.value = 0;
   const chessman: Chessman = { position: "0,0", type: game.value.camp, brother: "0,0" };
+  // 连续两次 PASS：如果上一手是对方 PASS，我方再 PASS 直接终局
+  if (lastActionWasPass.value) {
+    const winner = game.value.blackPoints - game.value.whitePoints - 7 > 0 ? "black" : "white";
+    ws.send(JSON.stringify({ type: "setWinner", data: { winner } }));
+    return;
+  }
   ws.send(JSON.stringify({
     type: "updateChess", data: {
       putChess: chessman,
@@ -306,6 +304,7 @@ const passChess = () => {
   }));
   store.commit("game/setRound", false);
   game.value.moves++;
+  lastActionWasPass.value = true;
 };
 
 const resign = () => {
