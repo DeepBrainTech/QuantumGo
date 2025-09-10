@@ -155,8 +155,8 @@ const initGame = async (data: Record<string, any>) => {
       } else {
         // 对方 PASS 逻辑
         if (lastActionWasPass.value) {
-          // 连续两次 PASS，终局并判胜
-          const winner = game.value.blackPoints - game.value.whitePoints - 7 > 0 ? "black" : "white";
+          // 连续两次 PASS，终局并判胜（量子规则：白方仅贴一次目，已计入 whitePoints）
+          const winner = game.value.blackPoints > game.value.whitePoints ? "black" : "white";
           ws.send(JSON.stringify({ type: "setWinner", data: { winner } }));
           return;
         }
@@ -289,7 +289,7 @@ const passChess = () => {
   const chessman: Chessman = { position: "0,0", type: game.value.camp, brother: "0,0" };
   // 连续两次 PASS：如果上一手是对方 PASS，我方再 PASS 直接终局
   if (lastActionWasPass.value) {
-    const winner = game.value.blackPoints - game.value.whitePoints - 7 > 0 ? "black" : "white";
+    const winner = game.value.blackPoints > game.value.whitePoints ? "black" : "white";
     ws.send(JSON.stringify({ type: "setWinner", data: { winner } }));
     return;
   }

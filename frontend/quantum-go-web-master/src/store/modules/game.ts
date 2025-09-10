@@ -206,17 +206,37 @@ const actions = {
       return false;
     }
     
-    const chessman: Chessman = { position: payload.position, type: payload.type, brother: payload.position };
+    // Determine mapped positions per Quantum rules.
+    // Default: both realities play at the same coordinate.
+    let pos1 = payload.position;
+    let pos2 = payload.position;
+
+    // If initial quantum stones are already placed (subStatus === 'common') and
+    // the clicked position is one of the two quantum positions, then the two
+    // realities place at the paired quantum positions. For Black: [q0, q1]; for White: [q1, q0].
+    const isQuantumPhaseDone = state.subStatus === "common";
+    const isQuantumPos = (p: string) => p && (p === state.blackQuantum || p === state.whiteQuantum);
+    if (isQuantumPhaseDone && isQuantumPos(payload.position)) {
+      if (payload.type === "black") {
+        pos1 = state.blackQuantum;
+        pos2 = state.whiteQuantum;
+      } else {
+        pos1 = state.whiteQuantum;
+        pos2 = state.blackQuantum;
+      }
+    }
+
+    const chessman: Chessman = { position: pos1, type: payload.type, brother: pos2 };
     
     // 每个棋盘分别进行合法性检测：
-    // 棋盘1落子颜色与玩家相同；棋盘2为相反颜色
+    // 棋盘1落子颜色与玩家相同；棋盘2为相反颜色（仅限前两手）
     const opposite = (t: ChessmanType): ChessmanType => (t === "black" ? "white" : "black");
     const type1: ChessmanType = chessman.type;
     // Quantum rule: only first two moves invert colour between realities.
     const type2: ChessmanType = state.subStatus === "common" ? type1 : opposite(chessman.type);
     const canPut1 = canPutChessSituationalSuperko(
       state.board1,
-      payload.position,
+      pos1,
       type1,
       state.model,
       state.lastMove1 ?? undefined,
@@ -224,7 +244,7 @@ const actions = {
     );
     const canPut2 = canPutChessSituationalSuperko(
       state.board2,
-      payload.position,
+      pos2,
       type2,
       state.model,
       state.lastMove2 ?? undefined,
@@ -255,8 +275,8 @@ const actions = {
         blackChess2.type = "white";
       }
       // 更新各棋盘的最后一步位置
-      state.lastMove1 = chessman.position;
-      state.lastMove2 = chessman.position;
+      state.lastMove1 = pos1;
+      state.lastMove2 = pos2;
     } else if (state.subStatus === "white") {
       state.whiteQuantum = chessman.position;
       state.subStatus = "common";
@@ -280,8 +300,8 @@ const actions = {
         }
       }
       // 更新各棋盘的最后一步位置
-      state.lastMove1 = chessman.position;
-      state.lastMove2 = chessman.position;
+      state.lastMove1 = pos1;
+      state.lastMove2 = pos2;
     }
     commit("setRound", !state.round);
     // 计算各棋盘吃子：棋盘1按当前棋子颜色，棋盘2用相反颜色
@@ -295,14 +315,15 @@ const actions = {
     });
     state.records.push(record);
     // 更新局面历史（位置超劫）
-    const next1 = type1 === "black" ? "white" : "black";
-    const next2 = type2 === "black" ? "white" : "black";
-    state.history1.add(hashBoardWithTurn(state.board1, next1));
-    state.history2.add(hashBoardWithTurn(state.board2, next2));
+    // Record SSK state keyed by current player (pre-toggle), matching govariants
+    state.history1.add(hashBoardWithTurn(state.board1, type1));
+    state.history2.add(hashBoardWithTurn(state.board2, type2));
+    // Scoring as in govariants Quantum: sum both boards; apply komi once to White.
     const result1 = calculateGoResult(state.board1, state.model, state.blackLost, state.whiteLost);
     const result2 = calculateGoResult(state.board2, state.model, state.blackLost, state.whiteLost);
-    state.blackPoints = Math.floor((result1.blackScore + result2.blackScore) / 2);
-    state.whitePoints = Math.floor((result1.whiteScore + result2.whiteScore) / 2);
+    const KOMI_ONCE = 7.5; // default komi for Quantum variant
+    state.blackPoints = Math.floor(result1.blackScore + result2.blackScore);
+    state.whitePoints = Math.floor(result1.whiteScore + result2.whiteScore + KOMI_ONCE);
     
     return true;
   },

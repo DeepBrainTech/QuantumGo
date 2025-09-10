@@ -295,7 +295,7 @@ const makeAIMove = async () => {
     if (playerPassed.value) {
       store.commit('game/setStatus', 'finished');
       store.commit('game/setRound', false);
-      const winner = game.value.blackPoints - game.value.whitePoints - 7 > 0 ? '黑方' : '白方';
+      const winner = game.value.blackPoints > game.value.whitePoints ? '黑方' : '白方';
       ElMessageBox.alert(`游戏结束，${winner}胜`, 'Finish', { confirmButtonText: 'OK' });
       isAIThinking.value = false;
       return;
@@ -316,7 +316,7 @@ const makeAIMove = async () => {
     if (playerPassed.value) {
       store.commit('game/setStatus', 'finished');
       store.commit('game/setRound', false);
-      const winner = game.value.blackPoints - game.value.whitePoints - 7 > 0 ? '黑方' : '白方';
+      const winner = game.value.blackPoints > game.value.whitePoints ? '黑方' : '白方';
       ElMessageBox.alert(`游戏结束，${winner}胜`, 'Finish', { confirmButtonText: 'OK' });
       isAIThinking.value = false;
       return;
@@ -434,7 +434,7 @@ const passChess = () => {
   if (aiPassed.value) {
     store.commit('game/setStatus', 'finished');
     store.commit('game/setRound', false);
-    const winner = game.value.blackPoints - game.value.whitePoints - 7 > 0 ? '黑方' : '白方';
+    const winner = game.value.blackPoints > game.value.whitePoints ? '黑方' : '白方';
     ElMessageBox.alert(`游戏结束，${winner}胜`, 'Finish', { confirmButtonText: 'OK' });
     return;
   }

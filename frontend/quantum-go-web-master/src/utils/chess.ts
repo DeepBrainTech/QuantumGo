@@ -101,11 +101,6 @@ export function canPutChess(board: Board, position: Position, type: ChessmanType
     return false;
   }
   
-  // 劫检测：如果只吃了一个子，且这个子就是上一步下的位置，则禁止
-  if (lastMove && captured.size === 1 && captured.has(lastMove)) {
-    return false;
-  }
-  
   return true;
 }
 
@@ -169,7 +164,6 @@ export function canPutChessSuperko(
 
   const currentGroup = [...findAllGroups(finalBoard, type, boardSize)].find(g => g.has(position));
   if (!currentGroup || calculateGroupLiberties(finalBoard, currentGroup, boardSize) === 0) return false;
-  if (lastMove && captured.size === 1 && captured.has(lastMove)) return false;
 
   // 位置超劫（可选）
   if (history) {
@@ -200,11 +194,10 @@ export function canPutChessSituationalSuperko(
 
   const currentGroup = [...findAllGroups(finalBoard, type, boardSize)].find(g => g.has(position));
   if (!currentGroup || calculateGroupLiberties(finalBoard, currentGroup, boardSize) === 0) return false;
-  if (lastMove && captured.size === 1 && captured.has(lastMove)) return false;
 
+  // Govariants aligns SSK by recording state with the current player (pre-toggle)
   if (history) {
-    const nextToMove: ChessmanType = type === "black" ? "white" : "black";
-    const h = hashBoardWithTurn(finalBoard, nextToMove);
+    const h = hashBoardWithTurn(finalBoard, type);
     if (history.has(h)) return false;
   }
   return true;
@@ -228,10 +221,8 @@ export function explainSituationalReason(
   captured.forEach(p => finalBoard.delete(p));
   const currentGroup = [...findAllGroups(finalBoard, type, boardSize)].find(g => g.has(position));
   if (!currentGroup || calculateGroupLiberties(finalBoard, currentGroup, boardSize) === 0) return { ok: false, reason: "suicide" };
-  if (lastMove && captured.size === 1 && captured.has(lastMove)) return { ok: false, reason: "simple-ko" };
   if (history) {
-    const nextToMove: ChessmanType = type === "black" ? "white" : "black";
-    const h = hashBoardWithTurn(finalBoard, nextToMove);
+    const h = hashBoardWithTurn(finalBoard, type);
     if (history.has(h)) return { ok: false, reason: "superko" };
   }
   return { ok: true };
