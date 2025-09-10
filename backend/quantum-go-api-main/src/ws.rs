@@ -3,7 +3,7 @@ use crate::entity::Room;
 use crate::entity::WsSender;
 use crate::entity::{Chessman, RoomInfo, GameResult};
 use crate::rating::RatingSystem;
-// AI功能已移除
+
 use axum::{
     extract::{
         Path, State,
