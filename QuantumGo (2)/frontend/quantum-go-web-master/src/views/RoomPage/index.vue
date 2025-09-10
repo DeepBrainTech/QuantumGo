@@ -69,19 +69,6 @@ const user = computed(() => store.state.user);
 const game = computed(() => store.state.game);
 const lang = computed(() => store.state.lang);
 
-// AI模式检测 - 检查房间的phase字段
-const isAIMode = computed(() => {
-  // 检查路由路径
-  if (route.path.startsWith('/ai/')) {
-    return true;
-  }
-  // 检查房间数据中的phase字段
-  if (game.value && game.value.phase === 'ai') {
-    return true;
-  }
-  return false;
-});
-
 const barrage = ref();
 
 let ws: any;
@@ -91,6 +78,7 @@ let roomId: string;
 onMounted(async () => {
   roomId = route.params.id as string;
   const res = await api.getGameInfo(roomId);
+  console.log(res);
   const redirectToHomeWithMessage = (message: string) => {
     ElMessage.error(message);
     router.push("/");
@@ -119,21 +107,18 @@ onMounted(() => {
 
 const initGame = async (data: Record<string, any>) => {
   await store.dispatch("game/setGameInfo", data);
-  console.log("Game initialized with data:", data);
-  console.log("Game status:", game.value.status);
-  console.log("Game round:", game.value.round);
-  console.log("Game camp:", game.value.camp);
-  
-  // 建立WebSocket连接用于PVP模式
+  console.log(data);
   ws = new WebSocket(`${Config.wsUrl}/${user.value.id}/${roomId}`);
   // ws = io(`ws://${window.location.hostname}/ws/${user.value.id}/${roomId}`);
+  console.log(ws);
   ws.onopen = () => {
-    console.log("WebSocket connected successfully");
+    console.log("Connected to WebSocket server");
     wsStatus.value = true;
   };
   ws.onclose = () => {
     wsStatus.value = false;
     ElMessage.warning(lang.value.text.room.ws_disconnected);
+    console.log("WebSocket connection closed");
   };
   ws.onerror = (error: any) => {
     ElMessage.warning(lang.value.text.room.ws_disconnected);
@@ -141,20 +126,14 @@ const initGame = async (data: Record<string, any>) => {
   };
   ws.onmessage = (event: any) => {
     const message = event.data;
-    console.log("Received WebSocket message:", message);
+    console.log("Received message:", message);
     const data = JSON.parse(message);
     if (data.type === "updateChess") {
       game.value.moves++;
       const chessman = data.data.putChess as Chessman;
+      console.log(chessman);
       if (chessman.position !== "0,0") {
         store.dispatch("game/putChess", chessman);
-      }
-      // 同步board2状态（如果存在）
-      if (data.data.board2) {
-        game.value.board2.clear();
-        data.data.board2.forEach(([position, chess]: [string, any]) => {
-          game.value.board2.set(position, chess);
-        });
       }
       store.commit("game/setRound", true);
       progress.value = 100;
@@ -232,7 +211,6 @@ const putChess = async (position: string) => {
   clearInterval(timer);
   progress.value = 0;
   game.value.moves++;
-  
   if (!wsStatus.value) {
     ElMessage.warning({ message: lang.value.text.room.ws_connection_error, grouping: true });
     return;
@@ -243,7 +221,6 @@ const putChess = async (position: string) => {
     data: {
       putChess: chessman,
       board: [...game.value.board1],
-      board2: [...game.value.board2], // 添加board2状态
       black_lost: game.value.blackLost,
       white_lost: game.value.whiteLost,
       chessman_records: game.value.records
@@ -294,6 +271,7 @@ const passChess = () => {
   }
   clearInterval(timer);
   progress.value = 0;
+  console.log("passChess");
   const chessman: Chessman = { position: "0,0", type: game.value.camp, brother: "0,0" };
   ws.send(JSON.stringify({
     type: "updateChess", data: {
@@ -329,7 +307,6 @@ const sendMessage = async () => {
   ws?.send(JSON.stringify({ type: "sendMessage", data: { message } }));
   barrage.value.sendBullet(message, 0);
 };
-
 
 const progressColors = ref([
   { color: "#f56c6c", percentage: 30 },

@@ -1,10 +1,8 @@
-use crate::entity::{RoomInfo, User, UserRanking, LeaderboardEntry};
+use crate::entity::{RoomInfo, User};
 use bcrypt::{DEFAULT_COST, hash, verify};
 use sqlx::postgres::PgPoolOptions;
 use sqlx::{Error, PgPool};
 use uuid::Uuid;
-use sqlx::Row;
-
 
 const MAX_CONNECTIONS: u32 = 5;
 
@@ -57,47 +55,8 @@ impl Database {
                 black_lost INTEGER NOT NULL DEFAULT 0,
                 white_lost INTEGER NOT NULL DEFAULT 0,
                 model INTEGER NOT NULL DEFAULT 9,
-                chessman_records JSONB NOT NULL DEFAULT '[]'::jsonb,
-                phase VARCHAR(50) DEFAULT 'BlackQuantum'
+                chessman_records JSONB NOT NULL DEFAULT '[]'::jsonb
             );
-            "#,
-        )
-        .execute(pool)
-        .await?;
-
-        // 检查并添加phase字段（如果不存在）
-        let result = sqlx::query(
-            "SELECT column_name FROM information_schema.columns WHERE table_name = 'room_infos' AND column_name = 'phase'"
-        )
-        .fetch_optional(pool)
-        .await?;
-
-        if result.is_none() {
-            println!("Adding phase column to room_infos table...");
-            sqlx::query("ALTER TABLE room_infos ADD COLUMN phase VARCHAR(50) DEFAULT 'BlackQuantum'")
-                .execute(pool)
-                .await?;
-            println!("Phase column added successfully");
-        }
-
-        // Create user_rankings table
-        sqlx::query(
-            r#"
-            CREATE TABLE IF NOT EXISTS user_rankings (
-                id SERIAL PRIMARY KEY,
-                user_id UUID NOT NULL,
-                model INTEGER NOT NULL,
-                rating DOUBLE PRECISION NOT NULL DEFAULT 1500.0,
-                rd DOUBLE PRECISION NOT NULL DEFAULT 350.0,
-                vol DOUBLE PRECISION NOT NULL DEFAULT 0.06,
-                games_played INTEGER NOT NULL DEFAULT 0,
-                wins INTEGER NOT NULL DEFAULT 0,
-                losses INTEGER NOT NULL DEFAULT 0,
-                draws INTEGER NOT NULL DEFAULT 0,
-                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-                updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-                UNIQUE(user_id, model)
-            )
             "#,
         )
         .execute(pool)
@@ -111,21 +70,14 @@ impl Database {
         let user_id = Uuid::new_v4();
         let hashed_password = hash_password(password)?;
 
-        let user = sqlx::query_as::<_, User>(
+        sqlx::query_as::<_, User>(
             "INSERT INTO users (user_id, username, password) VALUES ($1, $2, $3) RETURNING *",
         )
         .bind(user_id)
         .bind(username)
         .bind(hashed_password)
         .fetch_one(&self.pool)
-        .await?;
-
-        // 为新用户创建默认评分记录
-        for model in [9, 13, 19] {
-            self.create_user_ranking(&user_id, model).await?;
-        }
-
-        Ok(user)
+        .await
     }
 
     pub async fn verify_user(&self, username: &str, password: &str) -> Result<User, Error> {
@@ -191,8 +143,8 @@ impl Database {
         sqlx::query_as::<_, RoomInfo>(
             r#"
             INSERT INTO room_infos (
-                room_id, owner_id, visitor_id, status, round, winner, board, countdown, moves, black_lost, white_lost, model, chessman_records, phase
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING *
+                room_id, owner_id, visitor_id, status, round, winner, board, countdown, moves, black_lost, white_lost, model, chessman_records
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *
             "#,
         )
         .bind(room_info.room_id)
@@ -208,7 +160,6 @@ impl Database {
         .bind(room_info.white_lost)
         .bind(room_info.model)
         .bind(&room_info.chessman_records)
-        .bind(&room_info.phase)
         .fetch_one(&self.pool)
         .await
     }
@@ -234,45 +185,25 @@ impl Database {
                 black_lost = $8,
                 white_lost = $9,
                 model = $10,
-                chessman_records = $11,
-                phase = $12
-            WHERE id = $13 RETURNING *
+                chessman_records = $11
+            WHERE id = $12 RETURNING *
             "#,
         )
-        .bind(room_info.visitor_id)       // $1
-        .bind(&room_info.status)          // $2
-        .bind(&room_info.round)           // $3
-        .bind(&room_info.winner)          // $4
-        .bind(&room_info.board)           // $5
-        .bind(room_info.countdown)        // $6
-        .bind(room_info.moves)            // $7
-        .bind(room_info.black_lost)       // $8
-        .bind(room_info.white_lost)       // $9
-        .bind(room_info.model)            // $10
-        .bind(&room_info.chessman_records)// $11
-        .bind(&room_info.phase)           // $12
-        .bind(room_info.id)               // $13
+        .bind(room_info.visitor_id)
+        .bind(&room_info.status)
+        .bind(&room_info.round)
+        .bind(&room_info.winner)
+        .bind(&room_info.board)
+        .bind(room_info.countdown)
+        .bind(room_info.moves)
+        .bind(room_info.black_lost)
+        .bind(room_info.white_lost)
+        .bind(room_info.model)
+        .bind(&room_info.chessman_records)
+        .bind(room_info.id)
         .fetch_one(&self.pool)
         .await
     }
-
-    // 简化版：仅在访客加入时更新 visitor_id 与 status，避免其它字段绑定差异导致失败
-    pub async fn update_room_visitor_simple(&self, id: i32, visitor_id: Option<Uuid>, status: &str) -> Result<RoomInfo, Error> {
-        sqlx::query_as::<_, RoomInfo>(
-            r#"
-            UPDATE room_infos SET
-                visitor_id = $1,
-                status = $2
-            WHERE id = $3 RETURNING *
-            "#,
-        )
-        .bind(visitor_id)
-        .bind(status)
-        .bind(id)
-        .fetch_one(&self.pool)
-        .await
-    }
-    
 
     // Reserved for future use
     #[allow(dead_code)]
@@ -290,92 +221,6 @@ impl Database {
             .execute(&self.pool)
             .await?;
         Ok(())
-    }
-
-    // 新增：用户评分相关操作
-    pub async fn create_user_ranking(&self, user_id: &Uuid, model: i32) -> Result<UserRanking, Error> {
-        sqlx::query_as::<_, UserRanking>(
-            r#"
-            INSERT INTO user_rankings (user_id, model, rating, rd, vol, games_played, wins, losses, draws)
-            VALUES ($1, $2, 1500.0, 350.0, 0.06, 0, 0, 0, 0)
-            RETURNING *
-            "#,
-        )
-        .bind(user_id)
-        .bind(model)
-        .fetch_one(&self.pool)
-        .await
-    }
-
-    pub async fn get_user_ranking(&self, user_id: &Uuid, model: i32) -> Result<UserRanking, Error> {
-        sqlx::query_as::<_, UserRanking>(
-            "SELECT * FROM user_rankings WHERE user_id = $1 AND model = $2"
-        )
-        .bind(user_id)
-        .bind(model)
-        .fetch_one(&self.pool)
-        .await
-    }
-
-    pub async fn update_user_ranking(&self, ranking: &UserRanking) -> Result<UserRanking, Error> {
-        sqlx::query_as::<_, UserRanking>(
-            r#"
-            UPDATE user_rankings SET
-                rating = $1, rd = $2, vol = $3, games_played = $4, wins = $5, losses = $6, draws = $7, updated_at = NOW()
-            WHERE user_id = $8 AND model = $9 RETURNING *
-            "#,
-        )
-        .bind(ranking.rating)
-        .bind(ranking.rd)
-        .bind(ranking.vol)
-        .bind(ranking.games_played)
-        .bind(ranking.wins)
-        .bind(ranking.losses)
-        .bind(ranking.draws)
-        .bind(ranking.user_id)
-        .bind(ranking.model)
-        .fetch_one(&self.pool)
-        .await
-    }
-
-    pub async fn get_leaderboard(&self, model: i32, limit: i32) -> Result<Vec<LeaderboardEntry>, Error> {
-        let rows = sqlx::query(
-            r#"
-            SELECT
-                u.username,
-                ur.rating,
-                ur.rd,
-                ur.games_played,
-                ur.wins,
-                ur.losses,
-                ur.draws
-            FROM user_rankings ur
-            JOIN users u ON ur.user_id = u.user_id
-            WHERE ur.model = $1 AND ur.games_played > 0
-            ORDER BY ur.rating DESC
-            LIMIT $2
-            "#
-        )
-        .bind(model)
-        .bind(limit)
-        .fetch_all(&self.pool)
-        .await?;
-
-        let mut leaderboard = Vec::new();
-        for row in rows {
-            let entry = LeaderboardEntry {
-                username: row.get::<String, _>("username"),
-                rating: row.get::<f64, _>("rating"),
-                rd: row.get::<f64, _>("rd"),
-                games_played: row.get::<i32, _>("games_played"),
-                wins: row.get::<i32, _>("wins"),
-                losses: row.get::<i32, _>("losses"),
-                draws: row.get::<i32, _>("draws"),
-            };
-            leaderboard.push(entry);
-        }
-
-        Ok(leaderboard)
     }
 }
 

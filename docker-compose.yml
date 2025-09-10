@@ -28,7 +28,12 @@ services:
 
 
   frontend:
-    build: ./frontend/quantum-go-web-master
+    build:
+      context: ./frontend/quantum-go-web-master
+      args:
+        # 让前端打包使用本地后端服务
+        VITE_API_URL: http://localhost:3000
+        VITE_WS_URL: ws://localhost:3000/ws
     container_name: quantum-go-frontend
     ports:
       - "8080:80"  

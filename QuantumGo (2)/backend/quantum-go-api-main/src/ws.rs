@@ -1,9 +1,7 @@
 use crate::db::Database;
 use crate::entity::Room;
 use crate::entity::WsSender;
-use crate::entity::{Chessman, RoomInfo, GameResult};
-use crate::rating::RatingSystem;
-// AI功能已移除
+use crate::entity::{Chessman, RoomInfo};
 use axum::{
     extract::{
         Path, State,
@@ -70,8 +68,8 @@ async fn handle_user_connection(
     } else if is_visitor {
         room.user2 = Some(ws_sender.clone());
         if let Err(err) = update_room_visitor(state, room_info, user_id).await {
-            // 放宽处理：数据库更新失败不阻断连接，继续开始游戏
             info!("Failed to update room visitor: {}", err);
+            return Err("Failed to update room visitor".into());
         }
 
         // Send start game message to both players
@@ -151,23 +149,25 @@ async fn update_room_visitor(
     room_info: &RoomInfo,
     user_id: Uuid,
 ) -> Result<RoomInfo, sqlx::Error> {
-    info!("Updating room visitor (simple): room_id={}, visitor_id={}, id={}", 
-          room_info.room_id, user_id, room_info.id);
-    let result = state
+    state
         .db
-        .update_room_visitor_simple(room_info.id, Some(user_id), "playing")
-        .await;
-
-    match &result {
-        Ok(updated_room) => {
-            info!("Successfully updated room visitor: {:?}", updated_room);
-        }
-        Err(err) => {
-            info!("Failed to update room visitor: {} - Error details: {:?}", err, err);
-        }
-    }
-
-    result
+        .update_room(&RoomInfo {
+            id: room_info.id,
+            room_id: room_info.room_id,
+            owner_id: room_info.owner_id,
+            visitor_id: Some(user_id),
+            status: "playing".to_string(),
+            round: room_info.round.clone(),
+            winner: room_info.winner.clone(),
+            board: room_info.board.clone(),
+            countdown: room_info.countdown,
+            moves: room_info.moves,
+            black_lost: room_info.black_lost,
+            white_lost: room_info.white_lost,
+            model: room_info.model.clone(),
+            chessman_records: room_info.chessman_records.clone(),
+        })
+        .await
 }
 
 async fn process_messages(
@@ -284,7 +284,6 @@ async fn update_game_state(
             white_lost: data.white_lost,
             model: room_info.model.clone(),
             chessman_records: data.chessman_records.clone(),
-            phase: room_info.phase.clone(),
         })
         .await
 }
@@ -315,7 +314,7 @@ async fn update_winner(
     room_info: &RoomInfo,
     data: &SetWinner,
 ) -> Result<RoomInfo, sqlx::Error> {
-    let updated_room = state
+    state
         .db
         .update_room(&RoomInfo {
             id: room_info.id,
@@ -332,38 +331,8 @@ async fn update_winner(
             white_lost: room_info.white_lost,
             model: room_info.model.clone(),
             chessman_records: room_info.chessman_records.clone(),
-            phase: room_info.phase.clone(),
         })
-        .await?;
-
-    // 游戏结束后更新评分
-    let rating_system = RatingSystem::new();
-    let game_result = GameResult {
-        winner: Some(data.winner.clone()),
-        black_score: room_info.black_lost,
-        white_score: room_info.white_lost,
-        model: room_info.model,
-    };
-
-    // 在后台更新评分，不阻塞响应
-    let db_clone = state.db.clone();
-    let owner_id = room_info.owner_id;
-    
-    // 如果有访客，更新双方评分
-    if let Some(visitor_id) = room_info.visitor_id {
-        tokio::spawn(async move {
-            if let Err(err) = rating_system.update_ratings(
-                &db_clone,
-                &game_result,
-                owner_id,
-                visitor_id,
-            ).await {
-                info!("Failed to update ratings: {}", err);
-            }
-        });
-    }
-
-    Ok(updated_room)
+        .await
 }
 
 async fn cleanup_connection(state: &AppState, room_id: Uuid, user_id: Uuid, room_info: &RoomInfo) {
