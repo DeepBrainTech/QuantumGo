@@ -143,6 +143,11 @@ export function hashBoard(board: Board): string {
   return entries.map(([pos, t]) => `${pos}:${t[0]}`).join("|");
 }
 
+// Situational variant: include side-to-move in the hash to implement SSK.
+export function hashBoardWithTurn(board: Board, toMove: ChessmanType): string {
+  return `${hashBoard(board)}#${toMove[0]}`;
+}
+
 /**
  * 可选超劫检测的合法性判断（若提供 history 集合，则执行位置超劫）
  */
@@ -172,6 +177,64 @@ export function canPutChessSuperko(
     if (history.has(h)) return false;
   }
   return true;
+}
+
+/**
+ * Situational superko (SSK): repetition is only forbidden if the whole position
+ * AND the side-to-move are identical to a previous situation.
+ */
+export function canPutChessSituationalSuperko(
+  board: Board,
+  position: Position,
+  type: ChessmanType,
+  boardSize: BoardModel,
+  lastMove?: Position,
+  history?: Set<string>
+): boolean {
+  const tempBoard = new Map(board);
+  if (tempBoard.has(position)) return false;
+  tempBoard.set(position, { position, type, brother: "" });
+  const captured = getCapturedChess(tempBoard, type, boardSize);
+  const finalBoard = new Map(tempBoard);
+  captured.forEach(p => finalBoard.delete(p));
+
+  const currentGroup = [...findAllGroups(finalBoard, type, boardSize)].find(g => g.has(position));
+  if (!currentGroup || calculateGroupLiberties(finalBoard, currentGroup, boardSize) === 0) return false;
+  if (lastMove && captured.size === 1 && captured.has(lastMove)) return false;
+
+  if (history) {
+    const nextToMove: ChessmanType = type === "black" ? "white" : "black";
+    const h = hashBoardWithTurn(finalBoard, nextToMove);
+    if (history.has(h)) return false;
+  }
+  return true;
+}
+
+// Diagnostic helper to explain why a move is illegal.
+export type IllegalReason = "occupied" | "suicide" | "simple-ko" | "superko";
+export function explainSituationalReason(
+  board: Board,
+  position: Position,
+  type: ChessmanType,
+  boardSize: BoardModel,
+  lastMove?: Position,
+  history?: Set<string>
+): { ok: true } | { ok: false; reason: IllegalReason } {
+  if (board.has(position)) return { ok: false, reason: "occupied" };
+  const tempBoard = new Map(board);
+  tempBoard.set(position, { position, type, brother: "" });
+  const captured = getCapturedChess(tempBoard, type, boardSize);
+  const finalBoard = new Map(tempBoard);
+  captured.forEach(p => finalBoard.delete(p));
+  const currentGroup = [...findAllGroups(finalBoard, type, boardSize)].find(g => g.has(position));
+  if (!currentGroup || calculateGroupLiberties(finalBoard, currentGroup, boardSize) === 0) return { ok: false, reason: "suicide" };
+  if (lastMove && captured.size === 1 && captured.has(lastMove)) return { ok: false, reason: "simple-ko" };
+  if (history) {
+    const nextToMove: ChessmanType = type === "black" ? "white" : "black";
+    const h = hashBoardWithTurn(finalBoard, nextToMove);
+    if (history.has(h)) return { ok: false, reason: "superko" };
+  }
+  return { ok: true };
 }
 
 /**

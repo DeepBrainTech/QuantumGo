@@ -1,5 +1,5 @@
 import { Board, BoardModel, Chessman, ChessmanRecord, ChessmanRecords, ChessmanType } from "@/utils/types";
-import { canPutChess, getCapturedChess, canPutChessSuperko, hashBoard } from "@/utils/chess";
+import { canPutChess, getCapturedChess, canPutChessSuperko, canPutChessSituationalSuperko, hashBoard, hashBoardWithTurn, explainSituationalReason } from "@/utils/chess";
 import { calculateGoResult } from "@/utils/chess2";
 import api from "@/utils/api";
 
@@ -94,8 +94,8 @@ const mutations = {
     state.history1.clear();
     state.history2.clear();
     // 记录初始空局面
-    state.history1.add("");
-    state.history2.add("");
+    state.history1.add(hashBoardWithTurn(state.board1, "black"));
+    state.history2.add(hashBoardWithTurn(state.board2, "black"));
   }
 };
 
@@ -140,8 +140,11 @@ const actions = {
       // 重建局面历史哈希（用于位置超劫）
       state.history1.clear();
       state.history2.clear();
-      state.history1.add(hashBoard(state.board1));
-      state.history2.add(hashBoard(state.board2));
+      // After restoring a remote game, seed SSK history using current side-to-move.
+      const toMove1 = state.round ? "black" : "white";
+      const toMove2 = state.round ? "black" : "white";
+      state.history1.add(hashBoardWithTurn(state.board1, toMove1));
+      state.history2.add(hashBoardWithTurn(state.board2, toMove2));
       state.lastMove1 = null;
       state.lastMove2 = null;
     }
@@ -209,8 +212,9 @@ const actions = {
     // 棋盘1落子颜色与玩家相同；棋盘2为相反颜色
     const opposite = (t: ChessmanType): ChessmanType => (t === "black" ? "white" : "black");
     const type1: ChessmanType = chessman.type;
-    const type2: ChessmanType = opposite(chessman.type);
-    const canPut1 = canPutChessSuperko(
+    // Quantum rule: only first two moves invert colour between realities.
+    const type2: ChessmanType = state.subStatus === "common" ? type1 : opposite(chessman.type);
+    const canPut1 = canPutChessSituationalSuperko(
       state.board1,
       payload.position,
       type1,
@@ -218,7 +222,7 @@ const actions = {
       state.lastMove1 ?? undefined,
       state.history1
     );
-    const canPut2 = canPutChessSuperko(
+    const canPut2 = canPutChessSituationalSuperko(
       state.board2,
       payload.position,
       type2,
@@ -227,7 +231,13 @@ const actions = {
       state.history2
     );
     
+    // Quantum rule: a move must be legal on both boards individually.
     if (!canPut1 || !canPut2) {
+      try {
+        const r1 = explainSituationalReason(state.board1, payload.position, type1, state.model, state.lastMove1 ?? undefined, state.history1);
+        const r2 = explainSituationalReason(state.board2, payload.position, type2, state.model, state.lastMove2 ?? undefined, state.history2);
+        console.warn('[putChess rejection]', { board1: r1, board2: r2, pos: payload.position, type1, type2 });
+      } catch {}
       return false;
     }
     
@@ -285,8 +295,10 @@ const actions = {
     });
     state.records.push(record);
     // 更新局面历史（位置超劫）
-    state.history1.add(hashBoard(state.board1));
-    state.history2.add(hashBoard(state.board2));
+    const next1 = type1 === "black" ? "white" : "black";
+    const next2 = type2 === "black" ? "white" : "black";
+    state.history1.add(hashBoardWithTurn(state.board1, next1));
+    state.history2.add(hashBoardWithTurn(state.board2, next2));
     const result1 = calculateGoResult(state.board1, state.model, state.blackLost, state.whiteLost);
     const result2 = calculateGoResult(state.board2, state.model, state.blackLost, state.whiteLost);
     state.blackPoints = Math.floor((result1.blackScore + result2.blackScore) / 2);
