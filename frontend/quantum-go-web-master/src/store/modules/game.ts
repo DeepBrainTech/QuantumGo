@@ -64,8 +64,7 @@ const mutations = {
     state.board1.set(chessman1.position, chessman1);
     const chessman2: Chessman = {
       position: chessman1.brother,
-      // 盘面2显示与逻辑均采用相反颜色
-      type: chessman1.type === "black" ? "white" : "black",
+      type: chessman1.type,
       brother: chessman1.position
     };
     state.board2.set(chessman2.position, chessman2);
