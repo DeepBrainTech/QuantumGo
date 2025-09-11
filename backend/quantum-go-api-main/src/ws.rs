@@ -196,14 +196,34 @@ async fn process_messages(
                 }
             };
 
-            let target = if user_id == room_info.owner_id {
-                &mut room.user2
+            // 对于 setWinner 消息，需要向两个玩家都发送
+            if msg.mode == "setWinner" {
+                // 先更新数据库（只执行一次）
+                if let Ok(data) = serde_json::from_value::<SetWinner>(msg.data.clone()) {
+                    if let Err(err) = update_winner(state, &room_info, &data).await {
+                        info!("Failed to update room winner: {}", err);
+                        return;
+                    }
+                }
+                
+                // 向两个玩家都发送游戏结束消息
+                if let Some(user1) = &mut room.user1 {
+                    handle_message(&msg, user1, state, &room_info, &text).await;
+                }
+                if let Some(user2) = &mut room.user2 {
+                    handle_message(&msg, user2, state, &room_info, &text).await;
+                }
             } else {
-                &mut room.user1
-            };
+                // 其他消息只发送给目标玩家
+                let target = if user_id == room_info.owner_id {
+                    &mut room.user2
+                } else {
+                    &mut room.user1
+                };
 
-            if let Some(target_tx) = target {
-                handle_message(&msg, target_tx, state, &room_info, &text).await;
+                if let Some(target_tx) = target {
+                    handle_message(&msg, target_tx, state, &room_info, &text).await;
+                }
             }
         }
     }
@@ -292,16 +312,12 @@ async fn update_game_state(
 async fn handle_set_winner(
     msg: &Data<Value>,
     target_tx: &mut WsSender,
-    state: &AppState,
-    room_info: &RoomInfo,
+    _state: &AppState,
+    _room_info: &RoomInfo,
     text: &str,
 ) {
-    if let Ok(data) = serde_json::from_value::<SetWinner>(msg.data.clone()) {
-        if let Err(err) = update_winner(state, room_info, &data).await {
-            info!("Failed to update room winner: {}", err);
-            return;
-        }
-
+    if let Ok(_data) = serde_json::from_value::<SetWinner>(msg.data.clone()) {
+        // 只向当前玩家发送消息，数据库更新在 process_messages 中只执行一次
         let _ = target_tx
             .lock()
             .await
