@@ -23,6 +23,9 @@ export type Chessman = {
   position: string; 
   type: ChessmanType; 
   brother: string; 
+  // Optional hint for which board this record applies to during takebacks
+  // 1 = board1, 2 = board2; when omitted, applies to both (legacy behavior)
+  board?: 1 | 2;
 };
 
 /**

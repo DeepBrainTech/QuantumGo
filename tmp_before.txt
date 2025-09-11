@@ -231,20 +231,8 @@ const actions = {
       state.board1.delete(record.add[0].position);
       state.board2.delete(record.add[0].brother);
       record.reduce.forEach((chessman: Chessman) => {
-        // If a board hint exists, restore only on that board; otherwise restore both (legacy)
-        if (chessman.board === 1) {
-          state.board1.set(chessman.position, chessman);
-          // Re-link counterpart if exists
-          const mate = state.board2.get(chessman.brother);
-          if (mate) mate.brother = chessman.position;
-        } else if (chessman.board === 2) {
-          state.board2.set(chessman.position, chessman);
-          const mate = state.board1.get(chessman.brother);
-          if (mate) mate.brother = chessman.position;
-        } else {
-          state.board1.set(chessman.position, chessman);
-          state.board2.set(chessman.brother, chessman);
-        }
+        state.board1.set(chessman.position, chessman);
+        state.board2.set(chessman.brother, chessman);
       });
     });
   },
@@ -355,17 +343,11 @@ const actions = {
     // 计算各棋盘吃子：棋盘1按当前棋子颜色，棋盘2用相反颜色
     const capturedChess1 = getCapturedChess(state.board1, type1, state.model);
     const capturedChess2_row = getCapturedChess(state.board2, type2, state.model);
-
-    // Govariants Quantum: captures are processed independently on each board
-    capturedChess1.forEach((pos) => {
-      const c = state.board1.get(pos);
-      if (c) record.reduce.push({ ...c, board: 1 });
-      commit("deleteChessBoard1", pos);
-    });
-    capturedChess2_row.forEach((pos2) => {
-      const c2 = state.board2.get(pos2);
-      if (c2) record.reduce.push({ ...c2, board: 2 });
-      commit("deleteChessBoard2", pos2);
+    const capturedChess2 = new Set([...capturedChess2_row].map(position => state.board2.get(position).brother));
+    const capturedChess = new Set([...capturedChess1, ...capturedChess2]);
+    capturedChess.forEach(chessPosition => {
+      record.reduce.push(state.board1.get(chessPosition));
+      commit("deleteChess", chessPosition);
     });
     state.records.push(record);
     // 更新局面历史（位置超劫）
