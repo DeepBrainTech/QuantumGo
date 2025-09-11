@@ -2,6 +2,7 @@ use crate::entity::{RoomInfo, User, LeaderboardEntry};
 use axum::{Json, extract::State, http::StatusCode};
 use serde::Deserialize;
 use uuid::Uuid;
+use crate::katago::{AiGenmoveRequest, AiGenmoveResponse, genmove_with_katago};
 
 type ApiResult<T> = Result<(StatusCode, Json<T>), (StatusCode, Json<serde_json::Value>)>;
 
@@ -149,6 +150,20 @@ pub async fn get_leaderboard(
             Json(serde_json::json!({
                 "error": format!("Failed to get leaderboard: {}", err)
             })),
+        )),
+    }
+}
+
+#[axum::debug_handler]
+pub async fn ai_genmove(
+    _state: State<crate::ws::AppState>,
+    Json(req): Json<AiGenmoveRequest>,
+) -> ApiResult<AiGenmoveResponse> {
+    match genmove_with_katago(req).await {
+        Ok(resp) => Ok((StatusCode::OK, Json(resp))),
+        Err(err) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": format!("katago error: {}", err) })),
         )),
     }
 }

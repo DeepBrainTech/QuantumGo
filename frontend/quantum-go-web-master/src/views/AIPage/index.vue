@@ -47,6 +47,7 @@ import { computed, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage, ElMessageBox, ElProgress, ElLoading } from "element-plus";
 import { Chessman, ChessmanType } from "@/utils/types";
+import api from "@/utils/api";
 import { canPutChess, getCapturedChess } from "@/utils/chess";
 
 const route = useRoute();
@@ -107,6 +108,7 @@ const initAIGame = () => {
   console.log('AI游戏已初始化');
 };
 
+// MCTS（本地简易AI）作为后备方案
 // MCTS节点类
 class MCTSNode {
   position: string;
@@ -155,14 +157,14 @@ class MCTSNode {
   }
 }
 
-// MCTS算法实现
-const getAIMove = (): string | null => {
+// 本地MCTS算法（后备）
+const getAIMoveLocal = (): string | null => {
   const board1 = game.value.board1;
   const board2 = game.value.board2;
   const boardSize = game.value.model;
   const aiType = 'white'; // AI是白棋
   
-  console.log('MCTS AI算法 - 棋盘尺寸:', boardSize);
+  console.log('Fallback MCTS - 棋盘尺寸:', boardSize);
   
   // 获取所有可能的位置
   const possibleMoves: string[] = [];
@@ -225,7 +227,7 @@ const getAIMove = (): string | null => {
   );
   
   console.log('MCTS结果:', bestChild.position, `(${bestChild.visits}次访问)`);
-  
+
   return bestChild.position;
 };
 
@@ -281,14 +283,78 @@ const simulateGame = (move: string, player: 'black' | 'white', board1: Map<strin
   return 0;
 };
 
+// 将 GTP 坐标（如 "D16"/"Q3"）转换为 "x,y" 字符串（x 从上到下 1..N，y 从左到右 1..N）
+const gtpToXY = (coord: string, size: number): string | null => {
+  const c = coord.trim().toUpperCase();
+  if (c === 'PASS' || c === 'RESIGN') return null;
+  // 提取字母列 + 数字行
+  const match = c.match(/^([A-Z])(\d{1,2})$/);
+  if (!match) return null;
+  const colChar = match[1];
+  const row = parseInt(match[2], 10);
+  // GTP 行号自底向上 -> x = size - row + 1
+  const x = size - row + 1;
+  // 列字母跳过 I：A..H=1..8, J=9, K=10,...
+  const code = colChar.charCodeAt(0);
+  const y = code < 'I'.charCodeAt(0)
+    ? (code - 'A'.charCodeAt(0) + 1)
+    : (code - 'A'.charCodeAt(0));
+  if (x < 1 || y < 1 || x > size || y > size) return null;
+  return `${x},${y}`;
+};
+
+// 从本局记录构造经典围棋历史（使用 board1 的着法）
+const buildClassicHistory = (): { color: 'black' | 'white', position: string }[] => {
+  const history: { color: 'black' | 'white', position: string }[] = [];
+  for (const rec of game.value.records) {
+    if (rec.add && rec.add.length > 0) {
+      const m = rec.add[0];
+      // 在 board1 的位置与颜色：position=add[0].position, color=add[0].type
+      if (m && m.position && m.type) {
+        history.push({ color: m.type as 'black' | 'white', position: m.position });
+      }
+    }
+  }
+  return history;
+};
+
+// 调用后端 KataGo 获取 AI 一手；失败时回退到本地 MCTS
+const getAIMove = async (): Promise<{ kind: 'move' | 'pass' | 'resign', position?: string } | null> => {
+  const boardSize = game.value.model;
+  const next_to_move: 'black' | 'white' = 'white'; // 本页玩家=黑，AI=白
+  const moves = buildClassicHistory();
+  try {
+    const res = await api.aiGenmove({
+      board_size: boardSize,
+      next_to_move,
+      moves,
+      komi: 7.5,
+      rules: 'Chinese'
+    });
+    if (!res.success) throw new Error(`aiGenmove http ${res.status}`);
+    const mc = (res.data.move_coord as string || '').trim();
+    if (!mc) throw new Error('empty move');
+    if (mc.toLowerCase() === 'pass') return { kind: 'pass' };
+    if (mc.toLowerCase() === 'resign') return { kind: 'resign' };
+    const pos = gtpToXY(mc, boardSize);
+    if (!pos) throw new Error('invalid coord');
+    return { kind: 'move', position: pos };
+  } catch (e) {
+    console.warn('aiGenmove failed, fallback to MCTS', e);
+    const p = getAIMoveLocal();
+    if (!p) return { kind: 'pass' };
+    return { kind: 'move', position: p };
+  }
+};
+
 // AI下棋
 const makeAIMove = async () => {
   if (game.value.status !== 'playing' || game.value.round) {
     return; // 不是AI的回合
   }
   
-  const aiMove = getAIMove();
-  if (!aiMove) {
+  const aiMove = await getAIMove();
+  if (!aiMove || aiMove.kind === 'pass') {
     // AI 无路可走 -> pass
     aiPassed.value = true;
     // 双方连续弃权 -> 终局
@@ -305,11 +371,20 @@ const makeAIMove = async () => {
     isAIThinking.value = false;
     return;
   }
+  if (aiMove.kind === 'resign') {
+    // AI 认输 -> 玩家胜
+    store.commit('game/setStatus', 'finished');
+    store.commit('game/setRound', false);
+    ElMessageBox.alert('AI 认输，玩家获胜', 'Finish', { confirmButtonText: 'OK' });
+    isAIThinking.value = false;
+    return;
+  }
   
-  console.log('AI下棋:', aiMove);
+  const pos = aiMove.position as string;
+  console.log('AI下棋:', pos);
   
   // 使用store的putChess action，与PVP模式保持一致
-  const result = await store.dispatch('game/putChess', { position: aiMove, type: 'white' });
+  const result = await store.dispatch('game/putChess', { position: pos, type: 'white' });
   if (!result) {
     // 落子失败，视为 pass
     aiPassed.value = true;
