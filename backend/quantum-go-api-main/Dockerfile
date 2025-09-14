@@ -53,9 +53,16 @@ ARG KATAGO_MODEL_FILE=kata1-b28c512nbt-s10544735488-d5229296520.bin.gz
 ARG KATAGO_MODEL_URL=https://media.katagotraining.org/uploaded/networks/models/kata1-b28c512nbt-s10544735488-d5229296520.bin.gz
 RUN set -eux; \
     mkdir -p /app/katago/model; \
-    if [ ! -f "/app/katago/model/${KATAGO_MODEL_FILE}" ]; then \
-        echo "Model file not found in repo, downloading: ${KATAGO_MODEL_URL}"; \
-        curl -fL --retry 3 -o "/app/katago/model/${KATAGO_MODEL_FILE}" "${KATAGO_MODEL_URL}"; \
+    # If the file exists but is tiny (e.g., a Git LFS pointer), re-download
+    need_dl=1; \
+    if [ -f "/app/katago/model/${KATAGO_MODEL_FILE}" ]; then \
+        size=$(wc -c < "/app/katago/model/${KATAGO_MODEL_FILE}" || echo 0); \
+        if [ "$size" -ge 200000000 ]; then need_dl=0; fi; \
+    fi; \
+    if [ "$need_dl" -eq 1 ]; then \
+        echo "Fetching KataGo model: ${KATAGO_MODEL_URL}"; \
+        curl -fL --retry 5 --retry-delay 2 -o "/app/katago/model/${KATAGO_MODEL_FILE}.tmp" "${KATAGO_MODEL_URL}"; \
+        mv "/app/katago/model/${KATAGO_MODEL_FILE}.tmp" "/app/katago/model/${KATAGO_MODEL_FILE}"; \
     fi; \
     ls -lh /app/katago/model
 
