@@ -50,8 +50,8 @@ RUN set -eux; \
 
 # Download KataGo model at build time if missing (avoids relying on Git LFS during builds)
 # You can override the URL and filename with build args.
-ARG KATAGO_MODEL_FILE=kata1-b28c512nbt-s10544735488-d5229296520.bin.gz
-ARG KATAGO_MODEL_URL=https://media.katagotraining.org/uploaded/networks/models/kata1-b28c512nbt-s10544735488-d5229296520.bin.gz
+ARG KATAGO_MODEL_FILE=kata1-b28c512nbt-s10784871168-d5287365110.bin.gz
+ARG KATAGO_MODEL_URL=https://media.katagotraining.org/uploaded/networks/models/kata1/kata1-b28c512nbt-s10784871168-d5287365110.bin.gz
 ARG KATAGO_MODEL_SHA256=
 ARG FORCE_MODEL_DOWNLOAD=1
 RUN set -eux; \
