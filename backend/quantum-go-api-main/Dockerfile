@@ -50,8 +50,8 @@ RUN set -eux; \
 
 # Download KataGo model at build time if missing (avoids relying on Git LFS during builds)
 # You can override the URL and filename with build args.
-ARG KATAGO_MODEL_FILE=kata1-b28c512nbt-s10784871168-d5287365110.bin.gz
-ARG KATAGO_MODEL_URL=https://media.katagotraining.org/uploaded/networks/models/kata1/kata1-b28c512nbt-s10784871168-d5287365110.bin.gz
+ARG KATAGO_MODEL_FILE=kata9x9-b18c384nbt-20231025.bin.gz
+ARG KATAGO_MODEL_URL=https://media.katagotraining.org/uploaded/networks/models_extra/kata9x9-b18c384nbt-20231025.bin.gz
 ARG KATAGO_MODEL_SHA256=
 ARG FORCE_MODEL_DOWNLOAD=1
 RUN set -eux; \
@@ -80,7 +80,7 @@ ENV DATABASE_URL=postgres://postgres:postgres@postgres:5432/quantum_go
 ENV KATAGO_BIN=/app/katago/katago_real
 ENV KATAGO_MODEL=/app/katago/model/${KATAGO_MODEL_FILE}
 ENV KATAGO_GTP_CONFIG=/app/katago/default_gtp.cfg
-ENV KATAGO_OVERRIDES=ponderingEnabled=false,maxTime=3.0,numSearchThreads=4,logAllGTPCommunication=false,logSearchInfo=false,logToStderr=false,logDir=/tmp/gtp_logs
+ENV KATAGO_OVERRIDES=ponderingEnabled=false,maxTime=3.0,numSearchThreads=2,nnMaxBatchSize=2,nnCacheSizePowerOfTwo=14,logAllGTPCommunication=false,logSearchInfo=false,logToStderr=false,logDir=/tmp/gtp_logs
 
 # Expose the port the app runs on
 EXPOSE 3000
