@@ -73,7 +73,7 @@ onMounted(async () => {
 const createRoomVisible = ref(false);
 const form = reactive({
   gameMode: "pvp",
-  model: 19, // 默认19路棋盘
+  model: 9, // 默认19路棋盘
   countdown: 30 // 默认30秒倒计时
 });
 
