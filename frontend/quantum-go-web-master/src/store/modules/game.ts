@@ -91,12 +91,7 @@ const mutations = {
       state.whiteLost++;
     }
     state.board1.delete(position);
-    const matePos = chessInfo.brother;
-    const mate = state.board2.get(matePos);
-    if (mate && mate.brother === position) {
-      // Remaining stone becomes classical on board2
-      mate.brother = matePos;
-    }
+    // Govariants Quantum: do not mutate the mate here; mate removal handled by capture logic.
   },
 
   // Delete a stone only on board2; sever brother link on the counterpart.
@@ -109,12 +104,7 @@ const mutations = {
       state.whiteLost++;
     }
     state.board2.delete(position);
-    const matePos = chessInfo.brother;
-    const mate = state.board1.get(matePos);
-    if (mate && mate.brother === position) {
-      // Remaining stone becomes classical on board1
-      mate.brother = matePos;
-    }
+    // Govariants Quantum: do not mutate the mate here; mate removal handled by capture logic.
   },
 
   initBoard(state: any) {
@@ -354,30 +344,63 @@ const actions = {
     commit("setRound", !state.round);
     // 计算各棋盘吃子：棋盘1按当前棋子颜色，棋盘2用相反颜色
     const capturedChess1 = getCapturedChess(state.board1, type1, state.model);
-    const capturedChess2_row = getCapturedChess(state.board2, type2, state.model);
+    const capturedChess2 = getCapturedChess(state.board2, type2, state.model);
 
-    // Govariants Quantum: captures are processed independently on each board
-    capturedChess1.forEach((pos) => {
+    // Govariants Quantum entanglement: if a stone is captured on one board,
+    // its entangled counterpart on the other board is also removed.
+    // Build closure sets per board.
+    const toDelete1 = new Set<string>();
+    const toDelete2 = new Set<string>();
+
+    // Start with directly captured sets
+    capturedChess1.forEach((p) => toDelete1.add(p));
+    capturedChess2.forEach((p) => toDelete2.add(p));
+
+    // Add mates of captured stones across realities (if present)
+    capturedChess1.forEach((p1) => {
+      const c1 = state.board1.get(p1);
+      if (c1) {
+        const matePos2 = c1.brother;
+        if (state.board2.has(matePos2)) {
+          toDelete2.add(matePos2);
+        }
+      }
+    });
+    capturedChess2.forEach((p2) => {
+      const c2 = state.board2.get(p2);
+      if (c2) {
+        const matePos1 = c2.brother;
+        if (state.board1.has(matePos1)) {
+          toDelete1.add(matePos1);
+        }
+      }
+    });
+
+    // Apply deletions, recording which board each removal occurred on.
+    toDelete1.forEach((pos) => {
       const c = state.board1.get(pos);
       if (c) record.reduce.push({ ...c, board: 1 });
       commit("deleteChessBoard1", pos);
     });
-    capturedChess2_row.forEach((pos2) => {
-      const c2 = state.board2.get(pos2);
-      if (c2) record.reduce.push({ ...c2, board: 2 });
-      commit("deleteChessBoard2", pos2);
+    toDelete2.forEach((pos) => {
+      const c = state.board2.get(pos);
+      if (c) record.reduce.push({ ...c, board: 2 });
+      commit("deleteChessBoard2", pos);
     });
     state.records.push(record);
     // 更新局面历史（位置超劫）
     // Record SSK state keyed by current player (pre-toggle), matching govariants
     state.history1.add(hashBoardWithTurn(state.board1, type1));
     state.history2.add(hashBoardWithTurn(state.board2, type2));
-    // Scoring as in govariants Quantum: sum both boards; apply komi once to White.
-    const result1 = calculateGoResult(state.board1, state.model, state.blackLost, state.whiteLost);
-    const result2 = calculateGoResult(state.board2, state.model, state.blackLost, state.whiteLost);
-    const KOMI_ONCE = 7.5; // default komi for Quantum variant
-    state.blackPoints = Math.floor(result1.blackScore + result2.blackScore);
-    state.whitePoints = Math.floor(result1.whiteScore + result2.whiteScore + KOMI_ONCE);
+    // Scoring aligned with Govariants Quantum:
+    // - Each board uses area scoring (no prisoner bonus); we pass 0 captures here
+    // - Sum both boards' scores
+    // - Apply komi once to White
+    const result1 = calculateGoResult(state.board1, state.model, 0, 0);
+    const result2 = calculateGoResult(state.board2, state.model, 0, 0);
+    const KOMI_ONCE = 7.5;
+    state.blackPoints = (result1.blackScore + result2.blackScore);
+    state.whitePoints = (result1.whiteScore + result2.whiteScore + KOMI_ONCE);
     
     return true;
   },
