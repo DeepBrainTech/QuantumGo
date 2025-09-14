@@ -17,6 +17,7 @@ FROM debian:bookworm-slim
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
     ca-certificates \
+    curl \
     libssl3 \
     libzip4 \
     zlib1g \
@@ -46,9 +47,26 @@ RUN set -eux; \
         chmod +x /app/katago/katago_real || true; \
     fi
 
+# Download KataGo model at build time if missing (avoids relying on Git LFS during builds)
+# You can override the URL and filename with build args.
+ARG KATAGO_MODEL_FILE=kata1-b28c512nbt-s10544735488-d5229296520.bin.gz
+ARG KATAGO_MODEL_URL=https://media.katagotraining.org/uploaded/networks/models/kata1-b28c512nbt-s10544735488-d5229296520.bin.gz
+RUN set -eux; \
+    mkdir -p /app/katago/model; \
+    if [ ! -f "/app/katago/model/${KATAGO_MODEL_FILE}" ]; then \
+        echo "Model file not found in repo, downloading: ${KATAGO_MODEL_URL}"; \
+        curl -fL --retry 3 -o "/app/katago/model/${KATAGO_MODEL_FILE}" "${KATAGO_MODEL_URL}"; \
+    fi; \
+    ls -lh /app/katago/model
+
 # Set environment variables
 ENV RUST_LOG=info
 ENV DATABASE_URL=postgres://postgres:postgres@postgres:5432/quantum_go
+# Sensible defaults so the app can run without extra env wiring
+ENV KATAGO_BIN=/app/katago/katago_real
+ENV KATAGO_MODEL=/app/katago/model/${KATAGO_MODEL_FILE}
+ENV KATAGO_GTP_CONFIG=/app/katago/default_gtp.cfg
+ENV KATAGO_OVERRIDES=ponderingEnabled=false,maxTime=3.0,numSearchThreads=4,logAllGTPCommunication=false,logSearchInfo=false,logToStderr=false,logDir=/tmp/gtp_logs
 
 # Expose the port the app runs on
 EXPOSE 3000
