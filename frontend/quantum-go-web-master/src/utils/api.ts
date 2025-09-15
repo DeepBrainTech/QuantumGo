@@ -60,6 +60,7 @@ class Api {
     moves: { color: 'black' | 'white', position: string }[],
     komi?: number,
     rules?: string,
+    forbidden?: string[],
   }): Promise<Response> {
     return this.request("/ai/genmove", payload as any);
   }

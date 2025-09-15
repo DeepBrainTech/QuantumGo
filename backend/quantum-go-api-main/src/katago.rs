@@ -16,6 +16,9 @@ pub struct AiGenmoveRequest {
     pub moves: Vec<MoveItem>,    // game history in order
     pub komi: Option<f32>,       // default 7.5
     pub rules: Option<String>,   // e.g. "Chinese"
+    // Optional list of moves ("x,y") that should be avoided under
+    // Quantum dual-board + SSK legality computed on the frontend.
+    pub forbidden: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -54,6 +57,21 @@ fn color_to_gtp(color: &str) -> &'static str {
         "w" | "white" => "W",
         _ => "B",
     }
+}
+
+fn gtp_to_xy(coord: &str, size: u8) -> io::Result<String> {
+    let c = coord.trim().to_ascii_uppercase();
+    if c == "PASS" || c == "RESIGN" { return Ok(c); }
+    if c.len() < 2 { return Err(io::Error::new(io::ErrorKind::InvalidInput, "bad gtp")); }
+    let bytes = c.as_bytes();
+    let col = bytes[0] as char;
+    let row: i32 = c[1..].parse().map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "bad row"))?;
+    let y = if col < 'I' { (col as u8 - b'A') as i32 + 1 } else { (col as u8 - b'A') as i32 }; // skip I
+    let x = (size as i32) - row + 1;
+    if x < 1 || y < 1 || x as u8 > size || y as u8 > size {
+        return Err(io::Error::new(io::ErrorKind::InvalidInput, "gtp out of bounds"));
+    }
+    Ok(format!("{},{}", x, y))
 }
 
 async fn read_gtp_reply(reader: &mut (impl AsyncBufReadExt + Unpin)) -> io::Result<String> {
@@ -140,7 +158,7 @@ static ENGINE_POOL: Lazy<Mutex<HashMap<u8, Arc<Mutex<KataGoEngine>>>>> = Lazy::n
 
 pub async fn genmove_with_katago(req: AiGenmoveRequest) -> Result<AiGenmoveResponse, io::Error> {
     // Get or create a persistent engine for this board size
-    let engine_arc = {
+    let mut engine_arc = {
         let mut pool = ENGINE_POOL.lock().await;
         if let Some(engine) = pool.get(&req.board_size) {
             engine.clone()
@@ -150,19 +168,60 @@ pub async fn genmove_with_katago(req: AiGenmoveRequest) -> Result<AiGenmoveRespo
             engine
         }
     };
+    // Build a quick lookup set of forbidden xy positions
+    let forbidden: std::collections::HashSet<String> = req
+        .forbidden
+        .clone()
+        .unwrap_or_default()
+        .into_iter()
+        .collect();
 
-    // Use the engine exclusively for this request
+    // Use the engine exclusively for this request; retry a few times if suggestion is forbidden.
+    let mut attempts = 0usize;
+    let max_attempts = 5usize;
     let mut engine = engine_arc.lock().await;
-    match engine.genmove(&req).await {
-        Ok(resp) => Ok(resp),
-        Err(_e) => {
-            // Try respawn once if engine broke (e.g. killed)
-            let mut pool = ENGINE_POOL.lock().await;
-            let new_engine = Arc::new(Mutex::new(KataGoEngine::new().await?));
-            pool.insert(req.board_size, new_engine.clone());
-            drop(pool);
-            let mut eng = new_engine.lock().await;
-            eng.genmove(&req).await
+    loop {
+        let res = engine.genmove(&req).await;
+        match res {
+            Ok(resp) => {
+                // If we don't have a forbidden set, return as-is
+                if forbidden.is_empty() { return Ok(resp); }
+                let xy = match gtp_to_xy(&resp.move_coord, req.board_size) {
+                    Ok(v) => v,
+                    Err(_) => return Ok(resp),
+                };
+                if xy == "PASS" || xy == "RESIGN" { return Ok(resp); }
+                if !forbidden.contains(&xy) { return Ok(resp); }
+                attempts += 1;
+                if attempts >= max_attempts {
+                    // Could not obtain a legal move; fall back to pass
+                    return Ok(AiGenmoveResponse { move_coord: "pass".to_string() });
+                }
+                // Respawn engine to change random seed and try again
+                drop(engine);
+                let mut pool = ENGINE_POOL.lock().await;
+                let new_arc = Arc::new(Mutex::new(KataGoEngine::new().await?));
+                pool.insert(req.board_size, new_arc.clone());
+                drop(pool);
+                engine_arc = new_arc.clone();
+                engine = engine_arc.lock().await;
+                continue;
+            }
+            Err(_) => {
+                // Engine error: respawn once per failure and retry
+                attempts += 1;
+                if attempts >= max_attempts {
+                    return Err(io::Error::new(io::ErrorKind::Other, "katago failed"));
+                }
+                drop(engine);
+                let mut pool = ENGINE_POOL.lock().await;
+                let new_arc = Arc::new(Mutex::new(KataGoEngine::new().await?));
+                pool.insert(req.board_size, new_arc.clone());
+                drop(pool);
+                engine_arc = new_arc.clone();
+                engine = engine_arc.lock().await;
+                continue;
+            }
         }
     }
 }

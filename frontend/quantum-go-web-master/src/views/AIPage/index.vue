@@ -48,7 +48,7 @@ import { useRoute, useRouter } from "vue-router";
 import { ElMessage, ElMessageBox, ElProgress, ElLoading } from "element-plus";
 import { Chessman, ChessmanType } from "@/utils/types";
 import api from "@/utils/api";
-import { canPutChess, getCapturedChess } from "@/utils/chess";
+import { canPutChess, canPutChessSituationalSuperko, hashBoardWithTurn } from "@/utils/chess";
 
 const route = useRoute();
 const router = useRouter();
@@ -102,6 +102,18 @@ const initAIGame = () => {
   game.value.subStatus = 'black'; // 从黑棋开始
   game.value.blackQuantum = '';
   game.value.whiteQuantum = '';
+  // 重置劫与超劫检测所需的历史与最后一步
+  game.value.lastMove1 = null;
+  game.value.lastMove2 = null;
+  if (game.value.history1 && game.value.history1.clear) game.value.history1.clear();
+  if (game.value.history2 && game.value.history2.clear) game.value.history2.clear();
+  // 记录初始空局面（行棋方：黑）
+  if (game.value.history1 && game.value.history1.add) {
+    game.value.history1.add(hashBoardWithTurn(game.value.board1, 'black'));
+  }
+  if (game.value.history2 && game.value.history2.add) {
+    game.value.history2.add(hashBoardWithTurn(game.value.board2, 'black'));
+  }
   playerPassed.value = false;
   aiPassed.value = false;
   
@@ -172,9 +184,24 @@ const getAIMoveLocal = (): string | null => {
     for (let y = 1; y <= boardSize; y++) {
       const position = `${x},${y}`;
       if (!board1.has(position) && !board2.has(position)) {
-        // 检查是否违反规则（包括劫检测）
-        if (canPutChess(board1, position, aiType, boardSize) && 
-            canPutChess(board2, position, aiType, boardSize)) {
+        // 使用情景超劫（SSK）一致性检查，避免后续被 store 拒绝
+        const legal1 = canPutChessSituationalSuperko(
+          board1,
+          position,
+          aiType as 'black' | 'white',
+          boardSize as 9 | 13 | 19,
+          game.value.lastMove1 ?? undefined,
+          game.value.history1
+        );
+        const legal2 = canPutChessSituationalSuperko(
+          board2,
+          position,
+          aiType as 'black' | 'white',
+          boardSize as 9 | 13 | 19,
+          game.value.lastMove2 ?? undefined,
+          game.value.history2
+        );
+        if (legal1 && legal2) {
           possibleMoves.push(position);
         }
       }
@@ -318,6 +345,38 @@ const buildClassicHistory = (): { color: 'black' | 'white', position: string }[]
   return history;
 };
 
+// 计算在当前双棋盘+SSK规则下不允许的点（供后端过滤）
+const computeForbidden = (): string[] => {
+  const boardSize = game.value.model as 9 | 13 | 19;
+  const forbidden: string[] = [];
+  const type1: 'black' | 'white' = 'white';
+  const type2: 'black' | 'white' = (game.value.subStatus === 'common') ? 'white' : 'black';
+  const isQuantumPos = (p: string) => p && (p === game.value.blackQuantum || p === game.value.whiteQuantum);
+  for (let x = 1; x <= boardSize; x++) {
+    for (let y = 1; y <= boardSize; y++) {
+      const clicked = `${x},${y}`;
+      if (game.value.board1.has(clicked) || game.value.board2.has(clicked)) { continue; }
+      // 与 store.putChess 一致的落点映射：若点击量子位置，则两盘面分别落在黑/白量子位置
+      let pos1 = clicked;
+      let pos2 = clicked;
+      if (game.value.subStatus === 'common' && isQuantumPos(clicked)) {
+        pos1 = game.value.whiteQuantum; // AI=white，board1 落在 whiteQuantum
+        pos2 = game.value.blackQuantum; // board2 落在 blackQuantum
+      }
+      const ok1 = canPutChessSituationalSuperko(
+        game.value.board1, pos1, type1, boardSize,
+        game.value.lastMove1 ?? undefined, game.value.history1
+      );
+      const ok2 = canPutChessSituationalSuperko(
+        game.value.board2, pos2, type2, boardSize,
+        game.value.lastMove2 ?? undefined, game.value.history2
+      );
+      if (!(ok1 && ok2)) forbidden.push(clicked);
+    }
+  }
+  return forbidden;
+};
+
 // 调用后端 KataGo 获取 AI 一手；失败时回退到本地 MCTS
 const getAIMove = async (): Promise<{ kind: 'move' | 'pass' | 'resign', position?: string } | null> => {
   const boardSize = game.value.model;
@@ -329,7 +388,8 @@ const getAIMove = async (): Promise<{ kind: 'move' | 'pass' | 'resign', position
       next_to_move,
       moves,
       komi: 7.5,
-      rules: 'Chinese'
+      rules: 'Chinese',
+      forbidden: computeForbidden(),
     });
     if (!res.success) throw new Error(`aiGenmove http ${res.status}`);
     const mc = (res.data.move_coord as string || '').trim();
@@ -357,12 +417,17 @@ const makeAIMove = async () => {
   if (!aiMove || aiMove.kind === 'pass') {
     // AI 无路可走 -> pass
     aiPassed.value = true;
+    // 计入一个回合（AI方行动）
+    game.value.moves++;
+    // 提示 AI pass，便于玩家选择跟着 pass 终局
+    ElMessage.warning({ message: lang.value.text.room.ai_pass, grouping: true });
     // 双方连续弃权 -> 终局
     if (playerPassed.value) {
       store.commit('game/setStatus', 'finished');
       store.commit('game/setRound', false);
-      const winner = game.value.blackPoints > game.value.whitePoints ? '黑方' : '白方';
-      ElMessageBox.alert(`游戏结束，${winner}胜`, 'Finish', { confirmButtonText: 'OK' });
+      const winnerName = game.value.blackPoints > game.value.whitePoints ? lang.value.text.room.side_black : lang.value.text.room.side_white;
+      const text = (lang.value.text.room.game_over_side_win as string).replace('{side}', winnerName);
+      ElMessageBox.alert(text, lang.value.text.room.finish_title, { confirmButtonText: 'OK' });
       isAIThinking.value = false;
       return;
     }
@@ -375,24 +440,81 @@ const makeAIMove = async () => {
     // AI 认输 -> 玩家胜
     store.commit('game/setStatus', 'finished');
     store.commit('game/setRound', false);
-    ElMessageBox.alert('AI 认输，玩家获胜', 'Finish', { confirmButtonText: 'OK' });
+    ElMessageBox.alert(lang.value.text.room.ai_resign_you_win, lang.value.text.room.finish_title, { confirmButtonText: 'OK' });
     isAIThinking.value = false;
     return;
   }
   
-  const pos = aiMove.position as string;
-  console.log('AI下棋:', pos);
-  
+  // 为避免“AI不走”现象：
+  // 1) 先本地校验候选点（SSK），不合法则重试若干次；
+  // 2) 若多次仍不合法则回退到本地搜索；
+  let pos = aiMove.position as string | undefined;
+  const maxTries = 3;
+  let tries = 0;
+  const isLegalForBoth = (clicked: string) => {
+    // 与 store.putChess 相同的坐标映射规则
+    const type1: ChessmanType = 'white';
+    const type2: ChessmanType = (game.value.subStatus === 'common') ? 'white' : 'black';
+    const isQuantumPos = (p: string) => p && (p === game.value.blackQuantum || p === game.value.whiteQuantum);
+    let pos1 = clicked;
+    let pos2 = clicked;
+    if (game.value.subStatus === 'common' && isQuantumPos(clicked)) {
+      pos1 = game.value.whiteQuantum;
+      pos2 = game.value.blackQuantum;
+    }
+    const ok1 = canPutChessSituationalSuperko(
+      game.value.board1, pos1, type1, game.value.model,
+      game.value.lastMove1 ?? undefined, game.value.history1
+    );
+    const ok2 = canPutChessSituationalSuperko(
+      game.value.board2, pos2, type2, game.value.model,
+      game.value.lastMove2 ?? undefined, game.value.history2
+    );
+    return ok1 && ok2;
+  };
+  while (pos && !isLegalForBoth(pos) && tries < maxTries) {
+    console.warn('AI建议点不合法，重试', { pos, tries });
+    const retry = await getAIMove();
+    tries++;
+    if (!retry || retry.kind !== 'move') { pos = undefined; break; }
+    pos = retry.position;
+  }
+  if (!pos || !isLegalForBoth(pos)) {
+    // 仍不合法：尝试本地找一个可行点
+    const fallback = getAIMoveLocal();
+    if (!fallback) {
+      // 落子失败，视为 pass
+      aiPassed.value = true;
+      ElMessage.warning({ message: lang.value.text.room.ai_pass, grouping: true });
+      if (playerPassed.value) {
+        store.commit('game/setStatus', 'finished');
+        store.commit('game/setRound', false);
+        const winnerName = game.value.blackPoints > game.value.whitePoints ? lang.value.text.room.side_black : lang.value.text.room.side_white;
+        const text = (lang.value.text.room.game_over_side_win as string).replace('{side}', winnerName);
+        ElMessageBox.alert(text, lang.value.text.room.finish_title, { confirmButtonText: 'OK' });
+        isAIThinking.value = false;
+        return;
+      }
+      store.commit('game/setRound', true);
+      isAIThinking.value = false;
+      return;
+    }
+    pos = fallback;
+  }
+
+  console.log('AI move:', pos);
   // 使用store的putChess action，与PVP模式保持一致
   const result = await store.dispatch('game/putChess', { position: pos, type: 'white' });
   if (!result) {
-    // 落子失败，视为 pass
+    // 若仍失败，最终视为 pass
     aiPassed.value = true;
+    ElMessage.warning({ message: lang.value.text.room.ai_pass, grouping: true });
     if (playerPassed.value) {
       store.commit('game/setStatus', 'finished');
       store.commit('game/setRound', false);
-      const winner = game.value.blackPoints > game.value.whitePoints ? '黑方' : '白方';
-      ElMessageBox.alert(`游戏结束，${winner}胜`, 'Finish', { confirmButtonText: 'OK' });
+      const winnerName = game.value.blackPoints > game.value.whitePoints ? lang.value.text.room.side_black : lang.value.text.room.side_white;
+      const text = (lang.value.text.room.game_over_side_win as string).replace('{side}', winnerName);
+      ElMessageBox.alert(text, lang.value.text.room.finish_title, { confirmButtonText: 'OK' });
       isAIThinking.value = false;
       return;
     }
@@ -404,6 +526,8 @@ const makeAIMove = async () => {
   // AI成功落子，清除弃权标记
   aiPassed.value = false;
   playerPassed.value = false;
+  // 计入一个回合（AI方行动）
+  game.value.moves++;
   // 清除AI思考状态
   isAIThinking.value = false;
 };
@@ -431,7 +555,7 @@ const putChess = async (position: string) => {
   
   // 检查位置是否已被占用
   if (game.value.board1.has(position) || game.value.board2.has(position)) {
-    ElMessage.warning('该位置已有棋子');
+    ElMessage.warning(lang.value.text.room.position_occupied);
     return;
   }
   
@@ -439,20 +563,22 @@ const putChess = async (position: string) => {
   // 玩家永远下黑棋
   if (!canPutChess(game.value.board1, position, 'black', game.value.model) || 
       !canPutChess(game.value.board2, position, 'black', game.value.model)) {
-    ElMessage.warning('无法在此位置下棋');
+    ElMessage.warning(lang.value.text.room.invalid_move);
     return;
   }
   
   // 使用store的putChess action，与PVP模式保持一致
   const result = await store.dispatch('game/putChess', { position, type: 'black' });
   if (!result) {
-    ElMessage.warning('无法在此位置下棋');
+    ElMessage.warning(lang.value.text.room.invalid_move);
     return;
   }
   
   // 玩家成功落子，清除弃权标记
   playerPassed.value = false;
   aiPassed.value = false;
+  // 计入一个回合（玩家行动）
+  game.value.moves++;
   // 延迟让AI下棋，让玩家看到黑棋完全落定
   isAIThinking.value = true; // 设置AI思考状态
   setTimeout(() => {
@@ -467,24 +593,24 @@ const backChess = async () => {
     return;
   }
   if (game.value.records.length < 2) {
-    ElMessage.warning({ message: "步数太少，无法悔棋", grouping: true });
+    ElMessage.warning({ message: lang.value.text.room.takeback_too_few, grouping: true });
     return;
   }
   
   await store.dispatch('game/backChess');
-  ElMessage.success('悔棋成功');
+  ElMessage.success(lang.value.text.room.takeback_success);
 };
 
 // 认输
 const resign = () => {
-  ElMessageBox.confirm('确定要认输吗？', '确认', {
-    confirmButtonText: '确定',
-    cancelButtonText: '取消',
+  ElMessageBox.confirm(lang.value.text.room.resign_confirm, lang.value.text.index.confirm, {
+    confirmButtonText: lang.value.text.index.confirm,
+    cancelButtonText: lang.value.text.index.cancel,
     type: 'warning'
   }).then(() => {
     store.commit('game/setStatus', 'finished');
     store.commit('game/setRound', false);
-    ElMessageBox.alert('游戏结束，AI获胜', 'Finish', { confirmButtonText: 'OK' });
+    ElMessageBox.alert(lang.value.text.room.ai_win, lang.value.text.room.finish_title, { confirmButtonText: 'OK' });
   });
 };
 
@@ -495,7 +621,7 @@ const passChess = () => {
     return;
   }
   if (game.value.board1.size <= 2) {
-    ElMessage.warning({ message: "步数太少，无法弃权", grouping: true });
+    ElMessage.warning({ message: lang.value.text.room.pass_too_few, grouping: true });
     return;
   }
   
@@ -509,8 +635,9 @@ const passChess = () => {
   if (aiPassed.value) {
     store.commit('game/setStatus', 'finished');
     store.commit('game/setRound', false);
-    const winner = game.value.blackPoints > game.value.whitePoints ? '黑方' : '白方';
-    ElMessageBox.alert(`游戏结束，${winner}胜`, 'Finish', { confirmButtonText: 'OK' });
+    const winnerName = game.value.blackPoints > game.value.whitePoints ? lang.value.text.room.side_black : lang.value.text.room.side_white;
+    const text = (lang.value.text.room.game_over_side_win as string).replace('{side}', winnerName);
+    ElMessageBox.alert(text, lang.value.text.room.finish_title, { confirmButtonText: 'OK' });
     return;
   }
   playerPassed.value = true;

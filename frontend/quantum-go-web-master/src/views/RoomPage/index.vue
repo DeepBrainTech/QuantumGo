@@ -196,9 +196,9 @@ const initGame = async (data: Record<string, any>) => {
       lastActionWasPass.value = false;
       const winner = data.data.winner;
       if (winner === game.value.camp) {
-        ElMessageBox.alert(lang.value.text.room.winner, "Finish", { confirmButtonText: "OK" });
+        ElMessageBox.alert(lang.value.text.room.winner, lang.value.text.room.finish_title, { confirmButtonText: "OK" });
       } else {
-        ElMessageBox.alert(lang.value.text.room.loser, "Finish", { confirmButtonText: "OK" });
+        ElMessageBox.alert(lang.value.text.room.loser, lang.value.text.room.finish_title, { confirmButtonText: "OK" });
       }
     } else if (data.type === "updateRoomInfo") {
       store.dispatch("game/updateRoomInfo", data.data);
@@ -315,7 +315,7 @@ const resign = () => {
   ws.send(JSON.stringify({ type: "setWinner", data: { winner: game.value.camp === "black" ? "white" : "black" } }));
   store.commit("game/setRound", false);
   store.commit("game/setStatus", "finished");
-  ElMessageBox.alert(lang.value.text.room.loser, "Finish", { confirmButtonText: "OK" });
+  ElMessageBox.alert(lang.value.text.room.loser, lang.value.text.room.finish_title, { confirmButtonText: "OK" });
 };
 
 const input = ref("");
