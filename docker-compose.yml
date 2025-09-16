@@ -24,6 +24,13 @@ services:
     environment:
       - DATABASE_URL=postgres://postgres:postgres@postgres:5432/quantum_go
       - RUST_LOG=info
+      - KATAGO_BIN=/app/katago/katago_real
+      - KATAGO_MODEL=/app/katago/model/kata9x9-b18c384nbt-20231025.bin.gz
+      - KATAGO_GTP_CONFIG=/app/katago/default_gtp.cfg
+      - KATAGO_OVERRIDES=backend=eigen,ponderingEnabled=false,maxTime=3.0,numSearchThreads=2,nnMaxBatchSize=2,nnCacheSizePowerOfTwo=14,logAllGTPCommunication=false,logSearchInfo=false,logToStderr=false,logDir=/tmp/gtp_logs
+      #- KATAGO_OVERRIDES=ponderingEnabled=false,maxVisits=200,logAllGTPCommunication=false,logToStderr=false,logDir=/tmp/gtp_logs
+      - APPIMAGE_EXTRACT_AND_RUN=1
+    # KataGo assets are baked into the image now to avoid noexec bind-mount issues
     restart: unless-stopped
 
 

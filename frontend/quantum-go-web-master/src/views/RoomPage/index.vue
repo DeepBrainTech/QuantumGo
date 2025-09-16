@@ -172,20 +172,26 @@ const initGame = async (data: Record<string, any>) => {
       }
       store.commit("game/setRound", true);
       progress.value = 100;
-      timer = setInterval(() => {
-        if (isWaitingBack.value === true) {
-          return;
-        }
-        const reduce = 0.1 / game.value.countdown * 100;
-        if (progress.value > reduce) {
-          progress.value -= 0.1 / game.value.countdown * 100;
-        } else {
-          progress.value = 0;
-          passChess();
-          ElMessage.warning(lang.value.text.room.time_up);
-          clearInterval(timer);
-        }
-      }, 100);
+      // 只有当countdown大于0时才启动倒计时
+      if (game.value.countdown > 0) {
+        timer = setInterval(() => {
+          if (isWaitingBack.value === true) {
+            return;
+          }
+          const reduce = 0.1 / game.value.countdown * 100;
+          if (progress.value > reduce) {
+            progress.value -= 0.1 / game.value.countdown * 100;
+          } else {
+            progress.value = 0;
+            passChess();
+            ElMessage.warning(lang.value.text.room.time_up);
+            clearInterval(timer);
+          }
+        }, 100);
+      } else {
+        // 不限时模式，不显示进度条
+        progress.value = 0;
+      }
       // 取消不可靠的“无合法着点”判赢逻辑，改用双 PASS 触发终局
     } else if (data.type === "startGame") {
       game.value.status = "playing";
@@ -196,9 +202,9 @@ const initGame = async (data: Record<string, any>) => {
       lastActionWasPass.value = false;
       const winner = data.data.winner;
       if (winner === game.value.camp) {
-        ElMessageBox.alert(lang.value.text.room.winner, "Finish", { confirmButtonText: "OK" });
+        ElMessageBox.alert(lang.value.text.room.winner, lang.value.text.room.finish_title, { confirmButtonText: "OK" });
       } else {
-        ElMessageBox.alert(lang.value.text.room.loser, "Finish", { confirmButtonText: "OK" });
+        ElMessageBox.alert(lang.value.text.room.loser, lang.value.text.room.finish_title, { confirmButtonText: "OK" });
       }
     } else if (data.type === "updateRoomInfo") {
       store.dispatch("game/updateRoomInfo", data.data);
@@ -315,7 +321,7 @@ const resign = () => {
   ws.send(JSON.stringify({ type: "setWinner", data: { winner: game.value.camp === "black" ? "white" : "black" } }));
   store.commit("game/setRound", false);
   store.commit("game/setStatus", "finished");
-  ElMessageBox.alert(lang.value.text.room.loser, "Finish", { confirmButtonText: "OK" });
+  ElMessageBox.alert(lang.value.text.room.loser, lang.value.text.room.finish_title, { confirmButtonText: "OK" });
 };
 
 const input = ref("");
@@ -336,6 +342,9 @@ const progressColors = ref([
   { color: "#5cb87a", percentage: 100 }
 ]);
 const progressLabel = (percentage: number) => {
+  if (game.value.countdown === 0) {
+    return "∞";
+  }
   return `${Math.floor(percentage / 100 * game.value.countdown)}S`;
 };
 

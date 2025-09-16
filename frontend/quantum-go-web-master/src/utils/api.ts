@@ -53,6 +53,18 @@ class Api {
     return this.request("/getLeaderboard", data);
   }
 
+  // Ask backend KataGo to generate a move for current game state
+  public async aiGenmove(payload: {
+    board_size: number,
+    next_to_move: 'black' | 'white',
+    moves: { color: 'black' | 'white', position: string }[],
+    komi?: number,
+    rules?: string,
+    forbidden?: string[],
+  }): Promise<Response> {
+    return this.request("/ai/genmove", payload as any);
+  }
+
 }
 
 const api = new Api(Config.apiUrl);
