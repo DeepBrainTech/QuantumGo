@@ -32,6 +32,7 @@
         </el-form-item>
         <el-form-item :label="lang.text.index.countdown_title" :label-width="'140px'">
           <el-select v-model="form.countdown" :placeholder="lang.text.index.countdown_placeholder">
+            <el-option :label="lang.text.index.countdown_unlimited" :value="0" />
             <el-option label="15S" :value="15" />
             <el-option label="30S" :value="30" />
             <el-option label="60S" :value="60" />
@@ -83,7 +84,7 @@ const createRoom = async () => {
 
 const createRoomSubmit = async () => {
   const {gameMode, countdown, model} = form;
-  if (!gameMode || !countdown || !model) {
+  if (!gameMode || countdown === undefined || countdown === null || !model) {
     ElMessage({ message: lang.value.text.index.create_room_error_empty_options, grouping: true, type: "error" });
     return;
   }

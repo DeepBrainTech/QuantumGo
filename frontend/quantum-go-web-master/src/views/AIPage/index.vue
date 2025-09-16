@@ -68,6 +68,9 @@ const progressColors = ref([
   { color: "#5cb87a", percentage: 100 }
 ]);
 const progressLabel = (percentage: number) => {
+  if (game.value.countdown === 0) {
+    return "∞";
+  }
   return `${Math.floor(percentage / 100 * game.value.countdown)}S`;
 };
 
@@ -78,6 +81,46 @@ let timer: NodeJS.Timeout | undefined;
 const isAIThinking = ref(false);
 const playerPassed = ref(false);
 const aiPassed = ref(false);
+
+// 启动玩家回合倒计时
+const startPlayerTimer = () => {
+  // 清除之前的定时器
+  if (timer) clearInterval(timer);
+  
+  // 只有当countdown大于0且是玩家回合时才启动倒计时
+  if (game.value.countdown > 0 && game.value.round && !isAIThinking.value) {
+    progress.value = 100;
+    timer = setInterval(() => {
+      if (!game.value.round || isAIThinking.value) {
+        // 不是玩家回合或AI在思考，停止倒计时
+        clearInterval(timer);
+        return;
+      }
+      const reduce = 0.1 / game.value.countdown * 100;
+      if (progress.value > reduce) {
+        progress.value -= 0.1 / game.value.countdown * 100;
+      } else {
+        progress.value = 0;
+        // 倒计时结束，玩家自动弃权
+        passChess();
+        ElMessage.warning(lang.value.text.room.time_up);
+        clearInterval(timer);
+      }
+    }, 100);
+  } else {
+    // 不限时模式或不是玩家回合，不显示进度条
+    progress.value = 0;
+  }
+};
+
+// 停止倒计时
+const stopTimer = () => {
+  if (timer) {
+    clearInterval(timer);
+    timer = undefined;
+  }
+  progress.value = 0;
+};
 
 // 初始化AI游戏
 onMounted(() => {
@@ -116,6 +159,9 @@ const initAIGame = () => {
   }
   playerPassed.value = false;
   aiPassed.value = false;
+  
+  // 启动玩家回合倒计时
+  startPlayerTimer();
   
   console.log('AI游戏已初始化');
 };
@@ -413,6 +459,9 @@ const makeAIMove = async () => {
     return; // 不是AI的回合
   }
   
+  // AI开始思考，停止倒计时
+  stopTimer();
+  
   const aiMove = await getAIMove();
   if (!aiMove || aiMove.kind === 'pass') {
     // AI 无路可走 -> pass
@@ -434,6 +483,8 @@ const makeAIMove = async () => {
     // 切回玩家回合
     store.commit('game/setRound', true);
     isAIThinking.value = false;
+    // AI pass后，启动玩家回合倒计时
+    startPlayerTimer();
     return;
   }
   if (aiMove.kind === 'resign') {
@@ -530,6 +581,9 @@ const makeAIMove = async () => {
   game.value.moves++;
   // 清除AI思考状态
   isAIThinking.value = false;
+  
+  // AI下棋完成，启动玩家回合倒计时
+  startPlayerTimer();
 };
 
 // 棋盘点击处理
@@ -545,8 +599,8 @@ const onBoardClick = (position: string, board: string) => {
 
 // 玩家下棋
 const putChess = async (position: string) => {
-  if (timer) clearInterval(timer);
-  progress.value = 0;
+  // 玩家下棋，停止倒计时
+  stopTimer();
   
   // 检查是否是玩家的回合
   if (!game.value.round) {
@@ -581,6 +635,7 @@ const putChess = async (position: string) => {
   game.value.moves++;
   // 延迟让AI下棋，让玩家看到黑棋完全落定
   isAIThinking.value = true; // 设置AI思考状态
+  // 玩家下棋后不启动倒计时，因为AI即将思考
   setTimeout(() => {
     makeAIMove();
   }, 500); // 延迟500毫秒
@@ -625,8 +680,8 @@ const passChess = () => {
     return;
   }
   
-  if (timer) clearInterval(timer);
-  progress.value = 0;
+  // 玩家弃权，停止倒计时
+  stopTimer();
   
   // 玩家弃权，轮到AI
   store.commit('game/setRound', false);

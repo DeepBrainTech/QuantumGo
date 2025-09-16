@@ -64,6 +64,7 @@ const text = {
       model_19: "19x19",
       countdown_title: "Countdown",
       countdown_placeholder: "Please select a turn time limit",
+      countdown_unlimited: "Unlimited",
       cancel: "Cancel",
       confirm: "Confirm"
     },
@@ -177,6 +178,7 @@ const text = {
       model_19: "19x19",
       countdown_title: "回合时限",
       countdown_placeholder: "请选择回合时限",
+      countdown_unlimited: "不限时",
       cancel: "取消",
       confirm: "确定"
     },
