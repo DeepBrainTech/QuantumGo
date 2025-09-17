@@ -124,7 +124,10 @@ const stopTimer = () => {
 
 // 初始化AI游戏
 onMounted(() => {
-  initAIGame();
+  // 延迟初始化，确保DOM元素已经渲染
+  setTimeout(() => {
+    initAIGame();
+  }, 100);
 });
 
 const initAIGame = () => {
@@ -235,7 +238,7 @@ const getAIMoveLocal = (): string | null => {
           board1,
           position,
           aiType as 'black' | 'white',
-          boardSize as 9 | 13 | 19,
+          boardSize as 7 | 9 | 13 | 19,
           game.value.lastMove1 ?? undefined,
           game.value.history1
         );
@@ -243,7 +246,7 @@ const getAIMoveLocal = (): string | null => {
           board2,
           position,
           aiType as 'black' | 'white',
-          boardSize as 9 | 13 | 19,
+          boardSize as 7 | 9 | 13 | 19,
           game.value.lastMove2 ?? undefined,
           game.value.history2
         );
@@ -326,8 +329,8 @@ const simulateGame = (move: string, player: 'black' | 'white', board1: Map<strin
       for (let y = 1; y <= boardSize; y++) {
         const position = `${x},${y}`;
         if (!simBoard1.has(position) && !simBoard2.has(position)) {
-          if (canPutChess(simBoard1, position, currentPlayer as 'black' | 'white', boardSize as 9 | 13 | 19) && 
-              canPutChess(simBoard2, position, currentPlayer as 'black' | 'white', boardSize as 9 | 13 | 19)) {
+          if (canPutChess(simBoard1, position, currentPlayer as 'black' | 'white', boardSize as 7 | 9 | 13 | 19) && 
+              canPutChess(simBoard2, position, currentPlayer as 'black' | 'white', boardSize as 7 | 9 | 13 | 19)) {
             possibleMoves.push(position);
           }
         }
@@ -393,7 +396,7 @@ const buildClassicHistory = (): { color: 'black' | 'white', position: string }[]
 
 // 计算在当前双棋盘+SSK规则下不允许的点（供后端过滤）
 const computeForbidden = (): string[] => {
-  const boardSize = game.value.model as 9 | 13 | 19;
+  const boardSize = game.value.model as 7 | 9 | 13 | 19;
   const forbidden: string[] = [];
   const type1: 'black' | 'white' = 'white';
   const type2: 'black' | 'white' = (game.value.subStatus === 'common') ? 'white' : 'black';

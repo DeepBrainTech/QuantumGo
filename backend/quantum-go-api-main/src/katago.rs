@@ -11,7 +11,7 @@ use once_cell::sync::Lazy;
 
 #[derive(Debug, Deserialize)]
 pub struct AiGenmoveRequest {
-    pub board_size: u8,          // 9 | 13 | 19
+    pub board_size: u8,          // 7 | 9 | 13 | 19
     pub next_to_move: String,    // "black" | "white"
     pub moves: Vec<MoveItem>,    // game history in order
     pub komi: Option<f32>,       // default 7.5

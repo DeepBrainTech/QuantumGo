@@ -51,7 +51,7 @@ pub struct User {
 pub struct UserRanking {
     pub id: i32,
     pub user_id: Uuid,
-    pub model: i32, // 9, 13, 19
+    pub model: i32, // 7, 9, 13, 19
     pub rating: f64,
     pub rd: f64,    // Rating Deviation
     pub vol: f64,   // Volatility

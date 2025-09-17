@@ -25,6 +25,7 @@
         </el-form-item>
         <el-form-item :label="lang.text.index.model_title" :label-width="'140px'">
           <el-select v-model="form.model" :placeholder="lang.text.index.model_placeholder">
+            <el-option :label="lang.text.index.model_7" :value="7" />
             <el-option :label="lang.text.index.model_9" :value="9" />
             <el-option :label="lang.text.index.model_13" :value="13" />
             <el-option :label="lang.text.index.model_19" :value="19" />

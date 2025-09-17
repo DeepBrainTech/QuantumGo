@@ -3,7 +3,7 @@
  */
 
 // 棋盘尺寸选项
-export const BOARD_SIZES = [9, 13, 19] as const;
+export const BOARD_SIZES = [7, 9, 13, 19] as const;
 
 // 棋子类型
 export const CHESS_TYPES = {

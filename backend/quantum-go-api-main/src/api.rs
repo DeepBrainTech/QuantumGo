@@ -134,7 +134,7 @@ pub async fn get_leaderboard(
 ) -> ApiResult<Vec<LeaderboardEntry>> {
     let limit = req.limit.unwrap_or(50);
     
-    if ![9, 13, 19].contains(&req.model) {
+    if ![7, 9, 13, 19].contains(&req.model) {
         return Err((
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({

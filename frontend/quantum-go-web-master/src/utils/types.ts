@@ -6,7 +6,7 @@ export type Board = Map<string, Chessman>;
 /**
  * 棋盘大小类型 - 支持标准围棋棋盘尺寸
  */
-export type BoardModel = 9 | 13 | 19;
+export type BoardModel = 7 | 9 | 13 | 19;
 
 /**
  * 棋子类型 - 黑白两色
