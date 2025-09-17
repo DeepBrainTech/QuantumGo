@@ -121,7 +121,7 @@ impl Database {
         .await?;
 
         // 为新用户创建默认评分记录
-        for model in [9, 13, 19] {
+        for model in [7, 9, 13, 19] {
             self.create_user_ranking(&user_id, model).await?;
         }
 

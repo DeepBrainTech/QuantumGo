@@ -91,6 +91,8 @@ const getPositionStr = (n: number) => {
 const canvas = ref();
 
 const generateBoard = () => {
+  if (!canvas.value) return;
+  
   canvas.value.width = game.value.model * 100;
   canvas.value.height = game.value.model * 100;
   const ctx = canvas.value.getContext("2d");
@@ -121,6 +123,7 @@ const generateBoard = () => {
     ctx.closePath();
     ctx.stroke();
     const p = {
+      7: [350],
       9: [250, 450, 650],
       13: [350, 650, 950],
       19: [350, 950, 1550]
@@ -135,8 +138,18 @@ const generateBoard = () => {
     });
   };
 };
-onMounted(() => generateBoard());
-watch(() => game.value.model, () => generateBoard());
+onMounted(() => {
+  // 延迟生成棋盘，确保canvas元素已经渲染
+  setTimeout(() => {
+    generateBoard();
+  }, 50);
+});
+watch(() => game.value.model, () => {
+  // 延迟生成棋盘，确保canvas元素已经渲染
+  setTimeout(() => {
+    generateBoard();
+  }, 50);
+});
 
 const putChess = async (index: number) => {
   if (!props.can) {

@@ -80,7 +80,7 @@ import api from '@/utils/api';
 const store = useStore();
 const lang = computed(() => store.state.lang);
 
-const models = [9, 13, 19];
+const models = [7, 9, 13, 19];
 const selectedModel = ref(13);
 const leaderboard = ref<Array<{
   username: string;
