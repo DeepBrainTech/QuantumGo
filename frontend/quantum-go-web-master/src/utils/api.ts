@@ -65,6 +65,18 @@ class Api {
     return this.request("/ai/genmove", payload as any);
   }
 
+  // Score estimation API
+  public async scoreEstimate(payload: {
+    boards: {
+      board_size: number,
+      black_stones: string[],
+      white_stones: string[],
+      next_to_move?: string
+    }[]
+  }): Promise<Response> {
+    return this.request("/ai/score_estimate", payload as any);
+  }
+
 }
 
 const api = new Api(Config.apiUrl);

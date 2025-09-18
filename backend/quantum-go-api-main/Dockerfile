@@ -6,10 +6,13 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends \
     pkg-config \
     libssl-dev \
+    build-essential \
+    g++ \
     && rm -rf /var/lib/apt/lists/*
 
 COPY src ./src
-COPY Cargo.toml Cargo.lock ./
+COPY Cargo.toml Cargo.lock build.rs ./
+COPY katago/score-estimator-master ./katago/score-estimator-master
 RUN cargo build --release
 
 FROM debian:bookworm-slim

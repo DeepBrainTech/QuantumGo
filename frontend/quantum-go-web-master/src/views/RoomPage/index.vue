@@ -1,6 +1,6 @@
 <template>
   <div class="main">
-    <div v-if="game.status === 'playing'" class="operation">
+    <div v-if="game.status === 'playing' || game.status === 'waiting'" class="operation">
       <div class="item btn" @click="passChess">{{ lang.text.room.pass }}</div>
       <div class="item btn" @click="backChess">{{ lang.text.room.takeback }}</div>
       <!--      <div class="btn">{{ lang.text.room.draw }}</div>-->
@@ -21,14 +21,19 @@
           <span class="value white animate-count">{{ game.whitePoints }}</span>
         </div>
       </div>
+      <div class="item btn score-estimator-btn" @click="estimateScore" :disabled="estimatingScore">
+        {{ estimatingScore ? lang.text.room.estimating : (showScoreEstimate ? 'Hide Estimate' : lang.text.room.score_estimator) }}
+      </div>
     </div>
     <div class="body">
       <div class="battle">
         <div class="board-box">
-          <board-component class="board" info="board1" :can="wsStatus" :callback="putChess" />
+          <board-component class="board" info="board1" :can="wsStatus" :callback="putChess" 
+                          :show-score-estimate="showScoreEstimate" :score-estimate-data="scoreEstimateData1" />
         </div>
         <div class="board-box">
-          <board-component class="board" info="board2" :can="wsStatus" :callback="putChess" />
+          <board-component class="board" info="board2" :can="wsStatus" :callback="putChess" 
+                          :show-score-estimate="showScoreEstimate" :score-estimate-data="scoreEstimateData2" />
         </div>
       </div>
       <div class="input-box">
@@ -88,6 +93,11 @@ let ws: any;
 const wsStatus = ref(false);
 // 连续弃权检测（PVP）
 const lastActionWasPass = ref(false);
+const lastPassPlayer = ref<string | null>(null);
+const estimatingScore = ref(false);
+const showScoreEstimate = ref(false);
+const scoreEstimateData1 = ref<any>(null);
+const scoreEstimateData2 = ref<any>(null);
 
 let roomId: string;
 onMounted(async () => {
@@ -151,16 +161,19 @@ const initGame = async (data: Record<string, any>) => {
       if (chessman.position !== "0,0") {
         // 正常落子
         lastActionWasPass.value = false;
+        lastPassPlayer.value = null;
         store.dispatch("game/putChess", chessman);
       } else {
         // 对方 PASS 逻辑
-        if (lastActionWasPass.value) {
-          // 连续两次 PASS，终局并判胜（量子规则：白方仅贴一次目，已计入 whitePoints）
+        const currentPlayer = chessman.type;
+        if (lastActionWasPass.value && lastPassPlayer.value !== currentPlayer) {
+          // 双方连续 PASS，终局并判胜（量子规则：白方仅贴一次目，已计入 whitePoints）
           const winner = game.value.blackPoints > game.value.whitePoints ? "black" : "white";
           ws.send(JSON.stringify({ type: "setWinner", data: { winner } }));
           return;
         }
         lastActionWasPass.value = true;
+        lastPassPlayer.value = currentPlayer;
         // 切换到我方回合与倒计时
       }
       // 同步board2状态（如果存在）
@@ -294,7 +307,8 @@ const passChess = () => {
   progress.value = 0;
   const chessman: Chessman = { position: "0,0", type: game.value.camp, brother: "0,0" };
   // 连续两次 PASS：如果上一手是对方 PASS，我方再 PASS 直接终局
-  if (lastActionWasPass.value) {
+  const currentPlayer = game.value.camp;
+  if (lastActionWasPass.value && lastPassPlayer.value !== currentPlayer) {
     const winner = game.value.blackPoints > game.value.whitePoints ? "black" : "white";
     ws.send(JSON.stringify({ type: "setWinner", data: { winner } }));
     return;
@@ -311,6 +325,7 @@ const passChess = () => {
   store.commit("game/setRound", false);
   game.value.moves++;
   lastActionWasPass.value = true;
+  lastPassPlayer.value = currentPlayer;
 };
 
 const resign = () => {
@@ -350,6 +365,148 @@ const progressLabel = (percentage: number) => {
 
 const progress = ref(0);
 let timer: NodeJS.Timeout;
+
+// Score Estimator功能
+const estimateScore = async () => {
+  console.log('estimateScore called!');
+  console.log('showScoreEstimate.value:', showScoreEstimate.value);
+  console.log('estimatingScore.value:', estimatingScore.value);
+  
+  // 如果已经在显示，则关闭显示
+  if (showScoreEstimate.value) {
+    console.log('Hiding estimate display');
+    showScoreEstimate.value = false;
+    scoreEstimateData1.value = null;
+    scoreEstimateData2.value = null;
+    return;
+  }
+
+  if (estimatingScore.value) return;
+  
+  try {
+    console.log('Starting score estimation...');
+    estimatingScore.value = true;
+    
+    // 准备棋盘数据
+    const board1 = game.value.board1 || new Map();
+    const board2 = game.value.board2 || new Map();
+    
+    console.log('Board1 size:', board1.size);
+    console.log('Board2 size:', board2.size);
+    console.log('Game model:', game.value.model);
+    
+    // 收集board1的棋子位置
+    const board1BlackStones: string[] = [];
+    const board1WhiteStones: string[] = [];
+    
+    for (let i = 1; i <= game.value.model * game.value.model; i++) {
+      const pos = getPositionStr(i);
+      if (board1.has(pos)) {
+        const chess = board1.get(pos);
+        if (chess.type === 'black') {
+          board1BlackStones.push(pos);
+        } else if (chess.type === 'white') {
+          board1WhiteStones.push(pos);
+        }
+      }
+    }
+    
+    // 收集board2的棋子位置
+    const board2BlackStones: string[] = [];
+    const board2WhiteStones: string[] = [];
+    
+    for (let i = 1; i <= game.value.model * game.value.model; i++) {
+      const pos = getPositionStr(i);
+      if (board2.has(pos)) {
+        const chess = board2.get(pos);
+        if (chess.type === 'black') {
+          board2BlackStones.push(pos);
+        } else if (chess.type === 'white') {
+          board2WhiteStones.push(pos);
+        }
+      }
+    }
+    
+    console.log('Board1 - Black stones:', board1BlackStones);
+    console.log('Board1 - White stones:', board1WhiteStones);
+    console.log('Board2 - Black stones:', board2BlackStones);
+    console.log('Board2 - White stones:', board2WhiteStones);
+    
+    // 调用API，分析两个棋盘
+    console.log('Calling API...');
+    const response = await api.scoreEstimate({
+      boards: [
+        {
+          board_size: game.value.model,
+          black_stones: board1BlackStones,
+          white_stones: board1WhiteStones,
+          next_to_move: game.value.round ? 'black' : 'white'
+        },
+        {
+          board_size: game.value.model,
+          black_stones: board2BlackStones,
+          white_stones: board2WhiteStones,
+          next_to_move: game.value.round ? 'black' : 'white'
+        }
+      ]
+    });
+    
+    console.log('API response received:', response);
+    
+    // 检查响应结构
+    const responseData = (response as any).data || response;
+    console.log('Response data:', responseData);
+    
+    if (responseData.boards && responseData.boards.length >= 2) {
+      // 处理board1的结果
+      const result1 = responseData.boards[0];
+      console.log('Board1 score estimate result:', result1);
+      console.log('Board1 ownership array length:', result1.ownership ? result1.ownership.length : 'undefined');
+      
+      scoreEstimateData1.value = result1;
+      
+      // 处理board2的结果
+      const result2 = responseData.boards[1];
+      console.log('Board2 score estimate result:', result2);
+      console.log('Board2 ownership array length:', result2.ownership ? result2.ownership.length : 'undefined');
+      
+      scoreEstimateData2.value = result2;
+      
+      showScoreEstimate.value = true;
+      
+      console.log('Setting showScoreEstimate to true');
+      console.log('scoreEstimateData1 set to:', scoreEstimateData1.value);
+      console.log('scoreEstimateData2 set to:', scoreEstimateData2.value);
+      
+      ElMessage.success({
+        message: `Board1: Score Lead ${result1.score_lead.toFixed(1)}, Winrate ${(result1.winrate * 100).toFixed(1)}% | Board2: Score Lead ${result2.score_lead.toFixed(1)}, Winrate ${(result2.winrate * 100).toFixed(1)}%`,
+        grouping: true
+      });
+    } else {
+      console.log('No boards in response or insufficient boards array');
+      ElMessage.error({
+        message: 'Score estimation failed: insufficient data',
+        grouping: true
+      });
+    }
+    
+  } catch (error) {
+    console.error('Score estimate failed:', error);
+    ElMessage.error({
+      message: lang.value.text.room.estimate_failed,
+      grouping: true
+    });
+  } finally {
+    estimatingScore.value = false;
+  }
+};
+
+// 辅助函数：将索引转换为位置字符串
+const getPositionStr = (index: number): string => {
+  const x = ((index - 1) % game.value.model) + 1;
+  const y = Math.floor((index - 1) / game.value.model) + 1;
+  return `${x},${y}`;
+};
 </script>
 
 <style scoped lang="scss">

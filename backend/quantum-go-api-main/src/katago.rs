@@ -8,6 +8,7 @@ use tokio::{
 };
 use std::sync::Arc;
 use once_cell::sync::Lazy;
+use crate::score_estimator;
 
 #[derive(Debug, Deserialize)]
 pub struct AiGenmoveRequest {
@@ -30,6 +31,34 @@ pub struct MoveItem {
 #[derive(Debug, Serialize)]
 pub struct AiGenmoveResponse {
     pub move_coord: String,   // e.g. "D16" or "pass" or "resign"
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ScoreEstimateRequest {
+    pub boards: Vec<ScoreEstimateBoardRequest>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ScoreEstimateBoardRequest {
+    pub board_size: u8,
+    pub black_stones: Vec<String>,
+    pub white_stones: Vec<String>,
+    pub next_to_move: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ScoreEstimateResponse {
+    pub boards: Vec<ScoreEstimateBoardResponse>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ScoreEstimateBoardResponse {
+    pub board_index: usize,
+    pub board_size: u8,
+    pub ownership: Vec<f32>,
+    pub winrate: f32,
+    pub score_lead: f32,
+    pub dead_stones: Vec<i32>, // 死子坐标列表 [x1, y1, x2, y2, ...]
 }
 
 fn xy_to_gtp(pos: &str, size: u8) -> io::Result<String> {
@@ -224,4 +253,70 @@ pub async fn genmove_with_katago(req: AiGenmoveRequest) -> Result<AiGenmoveRespo
             }
         }
     }
+}
+
+// 使用score-estimator的新实现
+pub async fn estimate_with_score_estimator(
+    req: ScoreEstimateRequest,
+) -> Result<ScoreEstimateResponse, io::Error> {
+    if req.boards.is_empty() {
+        return Err(io::Error::new(io::ErrorKind::InvalidInput, "no boards provided"));
+    }
+    
+    let mut responses = Vec::with_capacity(req.boards.len());
+    
+    for (idx, board) in req.boards.iter().enumerate() {
+        // 使用score-estimator进行估算
+        let (ownership, territory) = score_estimator::estimate_board_score(
+            board.board_size,
+            &board.black_stones,
+            &board.white_stones,
+            board.next_to_move.as_deref(),
+            1000, // trials
+            0.4,  // tolerance
+        ).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        
+        // 获取死子信息
+        let dead_stones = score_estimator::estimate_dead_stones(
+            board.board_size,
+            &board.black_stones,
+            &board.white_stones,
+            board.next_to_move.as_deref(),
+            1000, // 死子检测试验次数
+            0.4,  // 容差
+        ).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        
+        // 将死子坐标转换为扁平数组
+        let mut dead_stones_flat = Vec::new();
+        for (x, y) in dead_stones {
+            dead_stones_flat.push(x);
+            dead_stones_flat.push(y);
+        }
+        
+        // 计算胜率和分数领先
+        let mut black_territory = 0.0;
+        let mut white_territory = 0.0;
+        
+        for &value in &territory {
+            if value > 0.0 {
+                black_territory += value;
+            } else if value < 0.0 {
+                white_territory += value.abs();
+            }
+        }
+        
+        let score_lead = black_territory - white_territory;
+        let winrate = if score_lead > 0.0 { 0.5 + (score_lead / 100.0).min(0.5) } else { 0.5 - (score_lead.abs() / 100.0).min(0.5) };
+        
+        responses.push(ScoreEstimateBoardResponse {
+            board_index: idx,
+            board_size: board.board_size,
+            ownership,
+            winrate: winrate.max(0.0).min(1.0),
+            score_lead,
+            dead_stones: dead_stones_flat,
+        });
+    }
+    
+    Ok(ScoreEstimateResponse { boards: responses })
 }

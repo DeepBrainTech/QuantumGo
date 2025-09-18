@@ -2,7 +2,7 @@ use crate::entity::{RoomInfo, User, LeaderboardEntry};
 use axum::{Json, extract::State, http::StatusCode};
 use serde::Deserialize;
 use uuid::Uuid;
-use crate::katago::{AiGenmoveRequest, AiGenmoveResponse, genmove_with_katago};
+use crate::katago::{AiGenmoveRequest, AiGenmoveResponse, genmove_with_katago, ScoreEstimateRequest, ScoreEstimateResponse, estimate_with_score_estimator};
 
 type ApiResult<T> = Result<(StatusCode, Json<T>), (StatusCode, Json<serde_json::Value>)>;
 
@@ -164,6 +164,20 @@ pub async fn ai_genmove(
         Err(err) => Err((
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({ "error": format!("katago error: {}", err) })),
+        )),
+    }
+}
+
+#[axum::debug_handler]
+pub async fn score_estimate(
+    _state: State<crate::ws::AppState>,
+    Json(req): Json<ScoreEstimateRequest>,
+) -> ApiResult<ScoreEstimateResponse> {
+    match estimate_with_score_estimator(req).await {
+        Ok(resp) => Ok((StatusCode::OK, Json(resp))),
+        Err(err) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": format!("score estimate error: {}", err) })),
         )),
     }
 }

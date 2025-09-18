@@ -8,11 +8,23 @@
           <div :class="['quantum', info.get(getPositionStr(index)).type]" v-if="info.get(getPositionStr(index)).position !== info.get(getPositionStr(index)).brother">
             <div :class="['background', `q-${info.get(getPositionStr(index)).type}`,{reserve: info.get(getPositionStr(index)).type === 'white'}]" />
           </div>
-          <div :class="['black', {last: lastChess.black === getPositionStr(index)}]" v-else-if="info.get(getPositionStr(index)).type === 'black'" />
-          <div :class="['white', {last: lastChess.white === getPositionStr(index)}]" v-else />
+          <div :class="['black', {last: lastChess.black === getPositionStr(index), dead: isDeadStone(index)}]" v-else-if="info.get(getPositionStr(index)).type === 'black'">
+            <div v-if="isDeadStone(index)" class="dead-marker"></div>
+          </div>
+          <div :class="['white', {last: lastChess.white === getPositionStr(index), dead: isDeadStone(index)}]" v-else>
+            <div v-if="isDeadStone(index)" class="dead-marker"></div>
+          </div>
         </template>
         <div :class="['empty', game.camp, ((game.round || !game.roomId) && game.status !== 'finished') ? 'allowed' : '', board.hoverIndex === index ? 'hover' :'']"
-             v-else @click="putChess(index)" @mouseover="onHover(index)" @mouseleave="onUnhover" />
+             v-else @click="putChess(index)" @mouseover="onHover(index)" @mouseleave="onUnhover">
+        </div>
+
+        <div v-if="showScoreEstimate && scoreEstimateData && !info.has(getPositionStr(index)) && getOwnershipValue(index) > 0.6" class="score-estimate-marker" :key="`black-marker-${index}`">
+          <div class="territory-marker black-territory" :title="`Black territory: ${getOwnershipValue(index).toFixed(2)}`"></div>
+        </div>
+        <div v-if="showScoreEstimate && scoreEstimateData && !info.has(getPositionStr(index)) && getOwnershipValue(index) < -0.6" class="score-estimate-marker" :key="`white-marker-${index}`">
+          <div class="territory-marker white-territory" :title="`White territory: ${getOwnershipValue(index).toFixed(2)}`"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -37,6 +49,14 @@ const props = defineProps({
   callback: {
     type: Function,
     default: () => false
+  },
+  showScoreEstimate: {
+    type: Boolean,
+    default: false
+  },
+  scoreEstimateData: {
+    type: Object,
+    default: null
   }
 });
 const store = useStore();
@@ -179,6 +199,91 @@ const putChess = async (index: number) => {
     return;
   }
   props.callback(position, props.info);
+};
+
+const ownershipScale = computed(() => {
+  const ownership = props.scoreEstimateData?.ownership;
+  if (!ownership || ownership.length === 0) {
+    return 1;
+  }
+
+  let maxMagnitude = 0;
+  for (let i = 0; i < ownership.length; i++) {
+    const magnitude = Math.abs(ownership[i]);
+    if (magnitude > maxMagnitude) {
+      maxMagnitude = magnitude;
+    }
+  }
+
+  if (maxMagnitude === 0) {
+    return 1;
+  }
+  return maxMagnitude;
+});
+
+// 检查是否为死子
+const isDeadStone = (index: number): boolean => {
+  if (!props.scoreEstimateData || !props.scoreEstimateData.deadStones) {
+    return false;
+  }
+  
+  const deadStones = props.scoreEstimateData.deadStones;
+  const boardSize = game.value.model;
+  
+  // 调试信息
+  if (deadStones.length > 0) {
+    console.log('Dead stones data:', deadStones);
+  }
+  
+  // 将棋盘索引转换为坐标
+  const x = Math.floor((index - 1) / boardSize) + 1; // 行 (1-based)
+  const y = (index - 1) % boardSize + 1; // 列 (1-based)
+  
+  // 检查是否在死子列表中
+  for (let i = 0; i < deadStones.length; i += 2) {
+    const deadX = deadStones[i] + 1; // 转换为1-based
+    const deadY = deadStones[i + 1] + 1; // 转换为1-based
+    if (deadX === x && deadY === y) {
+      console.log(`Found dead stone at (${x}, ${y})`);
+      return true;
+    }
+  }
+  
+  return false;
+};
+
+const getOwnershipValue = (index: number): number => {
+  if (!props.scoreEstimateData || !props.scoreEstimateData.ownership) {
+    return 0;
+  }
+  
+  const ownership = props.scoreEstimateData.ownership;
+  const boardSize = game.value.model;
+  
+  if (ownership.length !== boardSize * boardSize) {
+    console.warn(`Ownership array length (${ownership.length}) doesn't match board size (${boardSize * boardSize})`);
+    return 0;
+  }
+  
+  // 将棋盘索引转换为坐标
+  // 棋盘索引从1开始，转换为1-based坐标
+  const x = Math.floor((index - 1) / boardSize) + 1; // 行 (1-based)
+  const y = (index - 1) % boardSize + 1; // 列 (1-based)
+  
+  // 转换为0-based坐标，匹配后端set_stone(x-1, y-1, color)的格式
+  const x0 = x - 1; // 行 (0-based)
+  const y0 = y - 1; // 列 (0-based)
+  
+  // 计算所有权数组索引，使用C++ score-estimator的y * width + x格式
+  const ownershipIndex = y0 * boardSize + x0;
+  
+  if (ownershipIndex >= 0 && ownershipIndex < ownership.length) {
+    const value = ownership[ownershipIndex];
+    // score-estimator的值范围是-1到1，不需要额外归一化
+    return value;
+  }
+  
+  return 0;
 };
 </script>
 
