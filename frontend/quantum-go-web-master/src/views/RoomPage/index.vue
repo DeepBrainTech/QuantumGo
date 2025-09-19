@@ -79,8 +79,10 @@
                           @toggleRemoval="onToggleRemoval" />
       </div>
       </div>
-      <div class="countdown" v-show="progress > 0">
-        <el-progress type="circle" striped striped-flow :percentage="progress" :color="progressColors" :format="progressLabel" />
+      <div class="countdown-slot">
+        <div class="countdown-inner" :class="{ visible: progress > 0 }">
+          <el-progress type="circle" striped striped-flow :percentage="progress" :color="progressColors" :format="progressLabel" />
+        </div>
       </div>
       <div class="input-box">
         <input class="input" v-model="input" type="text" :placeholder="lang.text.room.chat_placeholder" @keyup.enter="sendMessage" />
@@ -704,6 +706,7 @@ const formatScoreLead = (lead: number): string => {
 
 <style scoped lang="scss">
 @use "./index.scss" as *;
+@use "@/assets/styles/score-removal.scss" as *;
 
 .score-estimate-summary {
   margin: 0 6vw 1rem 6vw;

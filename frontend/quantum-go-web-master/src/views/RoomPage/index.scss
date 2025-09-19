@@ -286,12 +286,17 @@ $secondary-color: rgba(235, 137, 79, 0.7);
     bottom: 5vh;
     left: 3vw;
   }
-  .countdown {
+  // 固定占位，避免进度条出现/消失导致棋盘上下抖动
+  .countdown-slot {
+    --countdown-height: 120px;
+    height: var(--countdown-height);
     margin: 8px 0 12px 0;
     display: flex;
     justify-content: center;
     align-items: center;
   }
+  .countdown-inner { opacity: 0; transition: opacity 0.2s ease; }
+  .countdown-inner.visible { opacity: 1; }
 }
 
 @keyframes slideIn {

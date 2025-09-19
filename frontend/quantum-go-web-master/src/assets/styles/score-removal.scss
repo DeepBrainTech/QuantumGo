@@ -1,0 +1,67 @@
+/* Shared styles for score estimator summary table and stone removal toolbar */
+
+.score-estimate-summary {
+  margin: 0 6vw 1rem 6vw;
+  display: flex;
+  justify-content: center;
+}
+
+.estimate-table {
+  border-collapse: collapse;
+  min-width: 320px;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(4px);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.estimate-table th,
+.estimate-table td {
+  padding: 10px 14px;
+  text-align: center;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  color: #6E4C41;
+}
+
+.estimate-table thead th {
+  background: #EB894F;
+  color: #fff;
+}
+
+.estimate-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.estimate-table tbody th {
+  text-align: left;
+  padding-left: 16px;
+}
+
+.stone-removal-bar {
+  margin: 0 6vw 1rem 6vw;
+  padding: 10px 14px;
+  background: rgba(235, 137, 79, 0.12);
+  border: 1px solid rgba(235, 137, 79, 0.25);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  color: #6E4C41;
+}
+
+.stone-removal-bar .title { font-weight: 700; }
+.stone-removal-bar .summary { flex: 1; text-align: center; font-weight: 600; }
+.stone-removal-bar .actions { display: flex; gap: 10px; align-items: center; }
+
+.sr-btn {
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(0,0,0,0.08);
+  background: #fff;
+  cursor: pointer;
+}
+.sr-btn.primary { background: #EB894F; color: #fff; border-color: #EB894F; }
+.status.ok { color: #2e7d32; font-weight: 600; }
+

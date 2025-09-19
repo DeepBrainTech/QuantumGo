@@ -20,21 +20,71 @@
           <span class="value white animate-count">{{ game.whitePoints }}</span>
         </div>
       </div>
+      <div class="item btn score-estimator-btn" @click="estimateScore" :disabled="estimatingScore">
+        {{ estimatingScore ? lang.text.room.estimating : (showScoreEstimate ? 'Hide Estimate' : lang.text.room.score_estimator) }}
+      </div>
     </div>
     <div class="body">
+      <div v-if="stoneRemovalPhase" class="stone-removal-bar">
+        <div class="title">Stone Removal</div>
+        <div class="summary">Board1: {{ board1LeadText }} · Board2: {{ board2LeadText }}</div>
+        <div class="actions">
+          <button class="sr-btn" @click="autoScoreRemoval" :disabled="estimatingScore">Auto-score</button>
+          <button class="sr-btn" @click="clearRemoval">Clear</button>
+          <button class="sr-btn primary" @click="acceptRemoval" :disabled="myRemovalAccepted">{{ myRemovalAccepted ? 'Accept ✓' : 'Accept' }}</button>
+          <span class="status ok">Opponent accepted</span>
+        </div>
+      </div>
+      <div v-if="showScoreEstimate && scoreEstimateData1 && scoreEstimateData2" class="score-estimate-summary">
+        <table class="estimate-table">
+          <thead>
+            <tr>
+              <th></th>
+              <th>Winrate</th>
+              <th>Score Lead</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th>Board 1</th>
+              <td>{{ (scoreEstimateData1.winrate * 100).toFixed(1) }}%</td>
+              <td>{{ formatScoreLead(scoreEstimateData1.score_lead) }}</td>
+            </tr>
+            <tr>
+              <th>Board 2</th>
+              <td>{{ (scoreEstimateData2.winrate * 100).toFixed(1) }}%</td>
+              <td>{{ formatScoreLead(scoreEstimateData2.score_lead) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
       <div class="battle">
         <div class="board-box">
-          <board-component class="board" info="board1" :can="true" :callback="onBoardClick" />
+          <board-component class="board" info="board1" :can="true" :callback="onBoardClick"
+            :show-score-estimate="showScoreEstimate && !stoneRemovalPhase"
+            :score-estimate-data="scoreEstimateData1"
+            :stone-removal-mode="stoneRemovalPhase"
+            :removal-set="removalSet1"
+            @toggleRemoval="onToggleRemoval" />
         </div>
         <div class="board-box">
-          <board-component class="board" info="board2" :can="true" :callback="onBoardClick" />
+          <board-component class="board" info="board2" :can="true" :callback="onBoardClick"
+            :show-score-estimate="showScoreEstimate && !stoneRemovalPhase"
+            :score-estimate-data="scoreEstimateData2"
+            :stone-removal-mode="stoneRemovalPhase"
+            :removal-set="removalSet2"
+            @toggleRemoval="onToggleRemoval" />
+        </div>
+      </div>
+      <div class="countdown-slot">
+        <div class="countdown-inner" :class="{ visible: progress > 0 }">
+          <el-progress type="circle" striped striped-flow :percentage="progress" :color="progressColors" :format="progressLabel" />
         </div>
       </div>
       <div class="input-box">
         <input class="input" v-model="input" type="text" :placeholder="lang.text.room.chat_placeholder" @keyup.enter="sendMessage" />
       </div>
     </div>
-    <el-progress class="progress" v-show="progress > 0" type="circle" striped striped-flow :percentage="progress" :color="progressColors" :format="progressLabel" />
     <barrage-component ref="barrage" />
   </div>
 </template>
@@ -49,6 +99,7 @@ import { ElMessage, ElMessageBox, ElProgress, ElLoading } from "element-plus";
 import { Chessman, ChessmanType } from "@/utils/types";
 import api from "@/utils/api";
 import { canPutChess, canPutChessSituationalSuperko, hashBoardWithTurn } from "@/utils/chess";
+import { calculateGoResult } from "@/utils/chess2";
 
 const route = useRoute();
 const router = useRouter();
@@ -81,6 +132,30 @@ let timer: NodeJS.Timeout | undefined;
 const isAIThinking = ref(false);
 const playerPassed = ref(false);
 const aiPassed = ref(false);
+
+// Score Estimator & 点目
+const showScoreEstimate = ref(false);
+const estimatingScore = ref(false);
+const scoreEstimateData1 = ref<any>(null);
+const scoreEstimateData2 = ref<any>(null);
+const stoneRemovalPhase = ref(false);
+const removalSet1 = ref<Set<string>>(new Set());
+const removalSet2 = ref<Set<string>>(new Set());
+const myRemovalAccepted = ref(false); // AI 默认接受，只需玩家接受
+const formatScoreLead = (lead: number): string => {
+  if (lead > 0.0001) return `b+${lead.toFixed(1)}`;
+  if (lead < -0.0001) return `w+${Math.abs(lead).toFixed(1)}`;
+  return '0.0';
+};
+const computeBoardLeadText = (src: Map<string, any>, removed: Set<string>) => {
+  const m = new Map<string, { type: 'black' | 'white' }>();
+  src.forEach((c: any, pos: string) => { if (!removed.has(pos)) m.set(pos, { type: c.type }); });
+  const r = calculateGoResult(m as any, game.value.model, 0, 0);
+  const lead = r.blackScore - r.whiteScore;
+  return formatScoreLead(lead);
+};
+const board1LeadText = computed(() => computeBoardLeadText(game.value.board1, removalSet1.value));
+const board2LeadText = computed(() => computeBoardLeadText(game.value.board2, removalSet2.value));
 
 // 启动玩家回合倒计时
 const startPlayerTimer = () => {
@@ -473,13 +548,9 @@ const makeAIMove = async () => {
     game.value.moves++;
     // 提示 AI pass，便于玩家选择跟着 pass 终局
     ElMessage.warning({ message: lang.value.text.room.ai_pass, grouping: true });
-    // 双方连续弃权 -> 终局
+    // 双方连续弃权 -> 进入点目（AI默认接受）
     if (playerPassed.value) {
-      store.commit('game/setStatus', 'finished');
-      store.commit('game/setRound', false);
-      const winnerName = game.value.blackPoints > game.value.whitePoints ? lang.value.text.room.side_black : lang.value.text.room.side_white;
-      const text = (lang.value.text.room.game_over_side_win as string).replace('{side}', winnerName);
-      ElMessageBox.alert(text, lang.value.text.room.finish_title, { confirmButtonText: 'OK' });
+      enterStoneRemoval();
       isAIThinking.value = false;
       return;
     }
@@ -540,15 +611,7 @@ const makeAIMove = async () => {
       // 落子失败，视为 pass
       aiPassed.value = true;
       ElMessage.warning({ message: lang.value.text.room.ai_pass, grouping: true });
-      if (playerPassed.value) {
-        store.commit('game/setStatus', 'finished');
-        store.commit('game/setRound', false);
-        const winnerName = game.value.blackPoints > game.value.whitePoints ? lang.value.text.room.side_black : lang.value.text.room.side_white;
-        const text = (lang.value.text.room.game_over_side_win as string).replace('{side}', winnerName);
-        ElMessageBox.alert(text, lang.value.text.room.finish_title, { confirmButtonText: 'OK' });
-        isAIThinking.value = false;
-        return;
-      }
+      if (playerPassed.value) { enterStoneRemoval(); isAIThinking.value = false; return; }
       store.commit('game/setRound', true);
       isAIThinking.value = false;
       return;
@@ -563,15 +626,7 @@ const makeAIMove = async () => {
     // 若仍失败，最终视为 pass
     aiPassed.value = true;
     ElMessage.warning({ message: lang.value.text.room.ai_pass, grouping: true });
-    if (playerPassed.value) {
-      store.commit('game/setStatus', 'finished');
-      store.commit('game/setRound', false);
-      const winnerName = game.value.blackPoints > game.value.whitePoints ? lang.value.text.room.side_black : lang.value.text.room.side_white;
-      const text = (lang.value.text.room.game_over_side_win as string).replace('{side}', winnerName);
-      ElMessageBox.alert(text, lang.value.text.room.finish_title, { confirmButtonText: 'OK' });
-      isAIThinking.value = false;
-      return;
-    }
+    if (playerPassed.value) { enterStoneRemoval(); isAIThinking.value = false; return; }
     store.commit('game/setRound', true);
     isAIThinking.value = false;
     return;
@@ -689,21 +744,65 @@ const passChess = () => {
   // 玩家弃权，轮到AI
   store.commit('game/setRound', false);
   game.value.moves++;
-  // 双方连续弃权 -> 终局
-  if (aiPassed.value) {
-    store.commit('game/setStatus', 'finished');
-    store.commit('game/setRound', false);
-    const winnerName = game.value.blackPoints > game.value.whitePoints ? lang.value.text.room.side_black : lang.value.text.room.side_white;
-    const text = (lang.value.text.room.game_over_side_win as string).replace('{side}', winnerName);
-    ElMessageBox.alert(text, lang.value.text.room.finish_title, { confirmButtonText: 'OK' });
-    return;
-  }
+  // 双方连续弃权 -> 进入点目（AI默认接受）
+  if (aiPassed.value) { enterStoneRemoval(); return; }
   playerPassed.value = true;
   
   // AI继续下棋
   setTimeout(() => {
     makeAIMove();
   }, 1000);
+};
+
+// ======== Score estimator + Stone removal helpers ========
+const estimateScore = async () => {
+  if (showScoreEstimate.value) {
+    showScoreEstimate.value = false; scoreEstimateData1.value = null; scoreEstimateData2.value = null; return;
+  }
+  if (estimatingScore.value) return;
+  try {
+    estimatingScore.value = true;
+    const collect = (b: Map<string, any>) => { const black: string[] = [], white: string[] = []; for (let i = 1; i <= game.value.model * game.value.model; i++) { const pos = `${((i - 1) % game.value.model) + 1},${Math.floor((i - 1) / game.value.model) + 1}`; const c = b.get(pos); if (!c) continue; (c.type === 'black' ? black : white).push(pos); } return { black, white }; };
+    const a1 = collect(game.value.board1); const a2 = collect(game.value.board2);
+    const resp = await api.scoreEstimate({ boards: [
+      { board_size: game.value.model, black_stones: a1.black, white_stones: a1.white, next_to_move: game.value.round ? 'black' : 'white' },
+      { board_size: game.value.model, black_stones: a2.black, white_stones: a2.white, next_to_move: game.value.round ? 'black' : 'white' }
+    ]});
+    const data = (resp as any).data || resp;
+    if (data.boards && data.boards.length >= 2) {
+      scoreEstimateData1.value = data.boards[0]; scoreEstimateData2.value = data.boards[1]; showScoreEstimate.value = true;
+    } else { ElMessage.error({ message: 'Score estimation failed', grouping: true }); }
+  } catch (e) { console.error(e); ElMessage.error({ message: 'Score estimation failed', grouping: true }); }
+  finally { estimatingScore.value = false; }
+};
+
+const enterStoneRemoval = async () => { stoneRemovalPhase.value = true; showScoreEstimate.value = false; myRemovalAccepted.value = false; await autoScoreRemoval(); };
+const autoScoreRemoval = async () => {
+  try {
+    estimatingScore.value = true;
+    const collect = (b: Map<string, any>) => { const black: string[] = [], white: string[] = []; for (let i = 1; i <= game.value.model * game.value.model; i++) { const pos = `${((i - 1) % game.value.model) + 1},${Math.floor((i - 1) / game.value.model) + 1}`; const c = b.get(pos); if (!c) continue; (c.type === 'black' ? black : white).push(pos); } return { black, white }; };
+    const a1 = collect(game.value.board1); const a2 = collect(game.value.board2);
+    const resp = await api.scoreEstimate({ boards: [
+      { board_size: game.value.model, black_stones: a1.black, white_stones: a1.white, next_to_move: game.value.round ? 'black' : 'white' },
+      { board_size: game.value.model, black_stones: a2.black, white_stones: a2.white, next_to_move: game.value.round ? 'black' : 'white' }
+    ]});
+    const data = (resp as any).data || resp; const r1 = data.boards?.[0]; const r2 = data.boards?.[1];
+    if (r1 && r1.dead_stones) { const s = new Set<string>(); for (let i = 0; i < r1.dead_stones.length; i += 2) s.add(`${r1.dead_stones[i] + 1},${r1.dead_stones[i + 1] + 1}`); removalSet1.value = s; }
+    if (r2 && r2.dead_stones) { const s = new Set<string>(); for (let i = 0; i < r2.dead_stones.length; i += 2) s.add(`${r2.dead_stones[i] + 1},${r2.dead_stones[i + 1] + 1}`); removalSet2.value = s; }
+  } finally { estimatingScore.value = false; }
+};
+const clearRemoval = () => { removalSet1.value = new Set(); removalSet2.value = new Set(); myRemovalAccepted.value = false; };
+const onToggleRemoval = (pos: string, which: string) => { const set = which === 'board1' ? removalSet1.value : removalSet2.value; if (set.has(pos)) set.delete(pos); else set.add(pos); myRemovalAccepted.value = false; };
+const acceptRemoval = () => {
+  myRemovalAccepted.value = true; // AI默认接受
+  const cloneBoard = (src: Map<string, any>, removed: Set<string>) => { const m = new Map<string, any>(); src.forEach((v, k) => { if (!removed.has(k)) m.set(k, v); }); return m; };
+  const b1 = cloneBoard(game.value.board1, removalSet1.value); const b2 = cloneBoard(game.value.board2, removalSet2.value);
+  const r1 = calculateGoResult(b1 as any, game.value.model, 0, 0); const r2 = calculateGoResult(b2 as any, game.value.model, 0, 0);
+  const KOMI_ONCE = game.value.komi ?? 7.5; const blackTotal = r1.blackScore + r2.blackScore; const whiteTotal = r1.whiteScore + r2.whiteScore + KOMI_ONCE;
+  store.commit('game/setStatus', 'finished'); store.commit('game/setRound', false);
+  const winnerName = blackTotal > whiteTotal ? lang.value.text.room.side_black : lang.value.text.room.side_white;
+  const text = (lang.value.text.room.game_over_side_win as string).replace('{side}', winnerName);
+  ElMessageBox.alert(text, lang.value.text.room.finish_title, { confirmButtonText: 'OK' });
 };
 
 // 发送消息
