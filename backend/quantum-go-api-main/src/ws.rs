@@ -305,6 +305,7 @@ async fn update_game_state(
             model: room_info.model.clone(),
             chessman_records: data.chessman_records.clone(),
             phase: room_info.phase.clone(),
+            komi: room_info.komi,
         })
         .await
 }
@@ -349,6 +350,7 @@ async fn update_winner(
             model: room_info.model.clone(),
             chessman_records: room_info.chessman_records.clone(),
             phase: room_info.phase.clone(),
+            komi: room_info.komi,
         })
         .await?;
 

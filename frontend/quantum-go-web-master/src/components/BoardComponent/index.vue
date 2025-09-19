@@ -1,18 +1,25 @@
-<template>
+﻿<template>
   <div :class="['container', {'board-hover': board.boardHover}]" v-bind="$attrs" @mouseover="onBoardHover" @mouseleave="onBoardUnhover">
     <slot />
     <canvas class="board" ref="canvas" />
     <div class="chessman-box" :style="{gridTemplateColumns: `repeat(${game.model}, 1fr)`,gridTemplateRows: `repeat(${game.model}, 1fr)`}">
       <div class="chessman" v-for="index in game.model * game.model" :key="index">
         <template v-if="info.has(getPositionStr(index))">
-          <div :class="['quantum', info.get(getPositionStr(index)).type]" v-if="info.get(getPositionStr(index)).position !== info.get(getPositionStr(index)).brother">
+          <!-- 量子棋子：显示棋子，并在其上叠加红色 X 作为死子标记 -->
+          <div v-if="info.get(getPositionStr(index)).position !== info.get(getPositionStr(index)).brother"
+               :class="['quantum', info.get(getPositionStr(index)).type]" @click.stop="onToggleRemoval(index)">
             <div :class="['background', `q-${info.get(getPositionStr(index)).type}`,{reserve: info.get(getPositionStr(index)).type === 'white'}]" />
+            <div v-if="showDead(index)" class="dead-x"></div>
           </div>
-          <div :class="['black', {last: lastChess.black === getPositionStr(index), dead: isDeadStone(index)}]" v-else-if="info.get(getPositionStr(index)).type === 'black'">
-            <div v-if="isDeadStone(index)" class="dead-marker"></div>
+
+          <!-- 普通棋子：显示棋子，并在其上叠加红色 X 作为死子标记 -->
+          <div v-else-if="info.get(getPositionStr(index)).type === 'black'"
+               :class="['black', {last: lastChess.black === getPositionStr(index)}]" @click.stop="onToggleRemoval(index)">
+            <div v-if="showDead(index)" class="dead-x"></div>
           </div>
-          <div :class="['white', {last: lastChess.white === getPositionStr(index), dead: isDeadStone(index)}]" v-else>
-            <div v-if="isDeadStone(index)" class="dead-marker"></div>
+          <div v-else
+               :class="['white', {last: lastChess.white === getPositionStr(index)}]" @click.stop="onToggleRemoval(index)">
+            <div v-if="showDead(index)" class="dead-x"></div>
           </div>
         </template>
         <div :class="['empty', game.camp, ((game.round || !game.roomId) && game.status !== 'finished') ? 'allowed' : '', board.hoverIndex === index ? 'hover' :'']"
@@ -42,6 +49,14 @@ const props = defineProps({
     type: String,
     required: true
   },
+  stoneRemovalMode: {
+    type: Boolean,
+    default: false
+  },
+  removalSet: {
+    type: Object,
+    default: null
+  },
   can: {
     type: Boolean,
     default: true
@@ -63,6 +78,7 @@ const store = useStore();
 const lang = computed(() => store.state.lang);
 const board = computed(() => store.state.board);
 const game = computed(() => store.state.game);
+const emit = defineEmits(["toggleRemoval"]);
 
 const lastChess = computed(() => {
   const result = { black: "", white: "" };
@@ -103,10 +119,23 @@ const onUnhover = () => {
 
 const info = game.value[props.info];
 const getPositionStr = (n: number) => {
-  const x = Math.floor((n - 1) / game.value.model) + 1;
-  const y = (n - 1) % game.value.model + 1;
+  const x = ((n - 1) % game.value.model) + 1;
+  const y = Math.floor((n - 1) / game.value.model) + 1;
   return `${x},${y}`;
 };
+
+// Build a 1-based set of dead-stone coordinates ("x,y") for O(1) lookup
+const deadSet = computed<Set<string>>(() => {
+  const set = new Set<string>();
+  const ds = (props.scoreEstimateData as any)?.deadStones as number[] | undefined;
+  if (!ds || ds.length === 0) return set;
+  for (let i = 0; i < ds.length; i += 2) {
+    const x = ds[i] + 1; // convert to 1-based
+    const y = ds[i + 1] + 1;
+    set.add(`${x},${y}`);
+  }
+  return set;
+});
 
 const canvas = ref();
 
@@ -159,13 +188,13 @@ const generateBoard = () => {
   };
 };
 onMounted(() => {
-  // 延迟生成棋盘，确保canvas元素已经渲染
+  // å»¶è¿Ÿç”Ÿæˆæ£‹ç›˜ï¼Œç¡®ä¿canvaså…ƒç´ å·²ç»æ¸²æŸ“
   setTimeout(() => {
     generateBoard();
   }, 50);
 });
 watch(() => game.value.model, () => {
-  // 延迟生成棋盘，确保canvas元素已经渲染
+  // å»¶è¿Ÿç”Ÿæˆæ£‹ç›˜ï¼Œç¡®ä¿canvaså…ƒç´ å·²ç»æ¸²æŸ“
   setTimeout(() => {
     generateBoard();
   }, 50);
@@ -184,14 +213,14 @@ const putChess = async (index: number) => {
     return;
   }
   
-  // 检查是否是AI模式
+  // æ£€æŸ¥æ˜¯å¦æ˜¯AIæ¨¡å¼
   if (game.value.gameMode === 'ai') {
-    // AI模式直接调用回调，不调用store的putChess
+    // AIæ¨¡å¼ç›´æŽ¥è°ƒç”¨å›žè°ƒï¼Œä¸è°ƒç”¨storeçš„putChess
     props.callback(position, props.info);
     return;
   }
   
-  // PVP模式使用store的putChess
+  // PVPæ¨¡å¼ä½¿ç”¨storeçš„putChess
   const type = game.value.camp;
   const result = await store.dispatch("game/putChess", { position, type });
   if (!result) {
@@ -221,35 +250,36 @@ const ownershipScale = computed(() => {
   return maxMagnitude;
 });
 
-// 检查是否为死子
+// æ£€æŸ¥æ˜¯å¦ä¸ºæ­»å­
+// 优先使用后端死子列表；若缺失，则基于ownership保守判定
 const isDeadStone = (index: number): boolean => {
-  if (!props.scoreEstimateData || !props.scoreEstimateData.deadStones) {
-    return false;
-  }
-  
-  const deadStones = props.scoreEstimateData.deadStones;
-  const boardSize = game.value.model;
-  
-  // 调试信息
-  if (deadStones.length > 0) {
-    console.log('Dead stones data:', deadStones);
-  }
-  
-  // 将棋盘索引转换为坐标
-  const x = Math.floor((index - 1) / boardSize) + 1; // 行 (1-based)
-  const y = (index - 1) % boardSize + 1; // 列 (1-based)
-  
-  // 检查是否在死子列表中
-  for (let i = 0; i < deadStones.length; i += 2) {
-    const deadX = deadStones[i] + 1; // 转换为1-based
-    const deadY = deadStones[i + 1] + 1; // 转换为1-based
-    if (deadX === x && deadY === y) {
-      console.log(`Found dead stone at (${x}, ${y})`);
-      return true;
-    }
-  }
-  
+  const pos = getPositionStr(index);
+  // 1) 明确死子（score-estimator标注）
+  if (deadSet.value.size && deadSet.value.has(pos)) return true;
+  // 2) 基于ownership的保守推断
+  const stone = info.get(pos);
+  if (!stone || !props.scoreEstimateData || !props.scoreEstimateData.ownership) return false;
+  const v = getOwnershipValue(index);
+  if (stone.type === 'white' && v > 0.6) return true;
+  if (stone.type === 'black' && v < -0.6) return true;
   return false;
+};
+
+// 在石子移除模式下优先根据选择集显示死子
+const showDead = (index: number): boolean => {
+  if (props.stoneRemovalMode && props.removalSet) {
+    return (props.removalSet as Set<string>).has(getPositionStr(index));
+  }
+  return isDeadStone(index);
+};
+
+const onToggleRemoval = (index: number) => {
+  if (!props.stoneRemovalMode) return;
+  const pos = getPositionStr(index);
+  if (!info.has(pos)) return;
+  // 通知父组件切换该点的死活
+  // @ts-ignore
+  emit && emit("toggleRemoval", pos, props.info);
 };
 
 const getOwnershipValue = (index: number): number => {
@@ -265,21 +295,21 @@ const getOwnershipValue = (index: number): number => {
     return 0;
   }
   
-  // 将棋盘索引转换为坐标
-  // 棋盘索引从1开始，转换为1-based坐标
-  const x = Math.floor((index - 1) / boardSize) + 1; // 行 (1-based)
-  const y = (index - 1) % boardSize + 1; // 列 (1-based)
+  // å°†æ£‹ç›˜ç´¢å¼•è½¬æ¢ä¸ºåæ ‡
+  // æ£‹ç›˜ç´¢å¼•ä»Ž1å¼€å§‹ï¼Œè½¬æ¢ä¸º1-basedåæ ‡
+  const x = ((index - 1) % boardSize) + 1;
+  const y = Math.floor((index - 1) / boardSize) + 1; // åˆ— (1-based)
   
-  // 转换为0-based坐标，匹配后端set_stone(x-1, y-1, color)的格式
-  const x0 = x - 1; // 行 (0-based)
-  const y0 = y - 1; // 列 (0-based)
+  // è½¬æ¢ä¸º0-basedåæ ‡ï¼ŒåŒ¹é…åŽç«¯set_stone(x-1, y-1, color)çš„æ ¼å¼
+  const x0 = x - 1; // è¡Œ (0-based)
+  const y0 = y - 1; // åˆ— (0-based)
   
-  // 计算所有权数组索引，使用C++ score-estimator的y * width + x格式
+  // è®¡ç®—æ‰€æœ‰æƒæ•°ç»„ç´¢å¼•ï¼Œä½¿ç”¨C++ score-estimatorçš„y * width + xæ ¼å¼
   const ownershipIndex = y0 * boardSize + x0;
   
   if (ownershipIndex >= 0 && ownershipIndex < ownership.length) {
     const value = ownership[ownershipIndex];
-    // score-estimator的值范围是-1到1，不需要额外归一化
+    // score-estimatorçš„å€¼èŒƒå›´æ˜¯-1åˆ°1ï¼Œä¸éœ€è¦é¢å¤–å½’ä¸€åŒ–
     return value;
   }
   
@@ -290,3 +320,6 @@ const getOwnershipValue = (index: number): number => {
 <style scoped lang="scss">
 @use "./index.scss" as *;
 </style>
+
+
+

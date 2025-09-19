@@ -24,6 +24,9 @@ class Goban {
 
         Grid      global_visited;
         int       last_visited_counter;
+        mutable Vec last_dead;
+        mutable bool last_dead_valid;
+        mutable Color last_dead_player;
 
 #if USE_THREADS
         std::mt19937 rand;
@@ -108,6 +111,8 @@ class Goban {
          * board state 
          */ 
         Vec getDead(int num_iterations, float tolerance, const Grid &rollout_pass) const;
+        const Vec& getLastDead() const;
+        bool isLastDeadValid(Color player) const;
 
     private:
         Grid _estimate(Color player_to_move, int trials, float tolerance, bool debug);

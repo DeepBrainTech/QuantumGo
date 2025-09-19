@@ -32,6 +32,7 @@ pub struct RoomInfo {
     pub model: i32,
     pub chessman_records: serde_json::Value,
     pub phase: Option<String>,
+    pub komi: f64,
 }
 
 #[derive(Clone, Deserialize, Serialize, FromRow)]

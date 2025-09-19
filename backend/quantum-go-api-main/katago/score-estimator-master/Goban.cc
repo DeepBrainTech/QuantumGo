@@ -31,6 +31,9 @@ Goban::Goban(int width, int height)
 {
     default_grid_width = width;
     default_grid_height = height;
+    last_dead.size = 0;
+    last_dead_valid = false;
+    last_dead_player = BLACK;
 }
 
 Goban::Goban(const Goban &other) {
@@ -42,6 +45,9 @@ Goban::Goban(const Goban &other) {
 
     this->global_visited = other.global_visited;
     this->last_visited_counter = other.last_visited_counter;
+    this->last_dead = other.last_dead;
+    this->last_dead_valid = other.last_dead_valid;
+    this->last_dead_player = other.last_dead_player;
 
 #if USE_THREADS
     rand = std::mt19937(::rand());
@@ -58,13 +64,19 @@ void Goban::setBoardSize(int width, int height) {
 
     board.clear();
     global_visited.clear();
+    last_dead.size = 0;
+    last_dead_valid = false;
 
     default_grid_width = width;
     default_grid_height = height;
 }
 Grid Goban::estimate(Color player_to_move, int num_iterations, float tolerance, bool debug) const {
     Goban t(*this);
-    return t._estimate(player_to_move, num_iterations, tolerance, debug);
+    Grid result = t._estimate(player_to_move, num_iterations, tolerance, debug);
+    last_dead = t.last_dead;
+    last_dead_valid = t.last_dead_valid;
+    last_dead_player = t.last_dead_player;
+    return result;
 }
 
 Grid Goban::_estimate(Color player_to_move, int num_iterations, float tolerance, bool debug) {
@@ -183,6 +195,9 @@ Grid Goban::_estimate(Color player_to_move, int num_iterations, float tolerance,
     //pass1 = rollout(pass1_iterations, player_to_move, true, strong_life, bias, seki);
     pass1 = rollout(pass1_iterations, player_to_move, true, strong_life, bias, seki);
     Vec dead = getDead(pass1_iterations, tolerance, pass1);
+    last_dead = dead;
+    last_dead_valid = true;
+    last_dead_player = player_to_move;
 
 #ifndef EMSCRIPTEN
     if (debug) {
@@ -1025,4 +1040,13 @@ void Goban::setSize(int width, int height) {
 }
 void Goban::clearBoard() {
     board.clear();
+}
+
+
+const Vec& Goban::getLastDead() const {
+    return last_dead;
+}
+
+bool Goban::isLastDeadValid(Color player) const {
+    return last_dead_valid && last_dead_player == player;
 }

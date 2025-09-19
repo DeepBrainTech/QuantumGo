@@ -22,6 +22,7 @@ extern "C" {
     );
     fn get_dead_stones(
         estimator: *mut c_void,
+        player_to_move: i32,
         trials: i32,
         tolerance: f32,
         dead_stones: *mut i32,
@@ -93,7 +94,12 @@ impl ScoreEstimator {
         territory
     }
 
-    pub fn get_dead_stones(&self, trials: i32, tolerance: f32) -> Vec<(i32, i32)> {
+    pub fn get_dead_stones(
+        &self,
+        player_to_move: i32,
+        trials: i32,
+        tolerance: f32,
+    ) -> Vec<(i32, i32)> {
         let max_count = 1000; // 最大死子数量
         let mut dead_stones = vec![0i32; max_count * 2];
         let mut count = 0i32;
@@ -101,6 +107,7 @@ impl ScoreEstimator {
         unsafe {
             get_dead_stones(
                 self.estimator,
+                player_to_move,
                 trials,
                 tolerance,
                 dead_stones.as_mut_ptr(),
@@ -136,7 +143,7 @@ pub fn estimate_board_score(
     next_to_move: Option<&str>,
     trials: i32,
     tolerance: f32,
-) -> Result<(Vec<f32>, Vec<f32>), String> {
+) -> Result<(Vec<f32>, Vec<f32>, Vec<(i32, i32)>), String> {
     let estimator = ScoreEstimator::new(board_size as i32, board_size as i32);
 
     // 设置黑子
@@ -161,39 +168,12 @@ pub fn estimate_board_score(
     // 估算分数
     let ownership = estimator.estimate_score(player_to_move, trials, tolerance);
     let territory = estimator.compute_territory();
+    let dead_stones = estimator.get_dead_stones(player_to_move, trials, tolerance);
 
-    Ok((ownership, territory))
+    Ok((ownership, territory, dead_stones))
 }
 
 // 估算死子
-pub fn estimate_dead_stones(
-    board_size: u8,
-    black_stones: &[String],
-    white_stones: &[String],
-    next_to_move: Option<&str>,
-    trials: i32,
-    tolerance: f32,
-) -> Result<Vec<(i32, i32)>, String> {
-    let estimator = ScoreEstimator::new(board_size as i32, board_size as i32);
-
-    // 设置黑子
-    for stone in black_stones {
-        let (x, y) = parse_position(stone)?;
-        estimator.set_stone(x - 1, y - 1, 1); // 1表示黑色
-    }
-
-    // 设置白子
-    for stone in white_stones {
-        let (x, y) = parse_position(stone)?;
-        estimator.set_stone(x - 1, y - 1, 2); // 2表示白色
-    }
-
-    // 获取死子
-    let dead_stones = estimator.get_dead_stones(trials, tolerance);
-
-    Ok(dead_stones)
-}
-
 fn parse_position(pos: &str) -> Result<(i32, i32), String> {
     let parts: Vec<&str> = pos.split(',').collect();
     if parts.len() != 2 {

@@ -15,6 +15,7 @@ const state = () => ({
   whiteLost: 0 as number,
   blackPoints: 0 as number,
   whitePoints: 0 as number,
+  komi: 7.5 as number,
   round: true as boolean,
   camp: "black" as ChessmanType,
   model: 9 as BoardModel,
@@ -58,6 +59,9 @@ const mutations = {
 
   setCountdown(state: any, countdown: number) {
     state.countdown = countdown;
+  },
+  setKomi(state: any, komi: number) {
+    state.komi = komi;
   },
 
   setChess(state: any, chessman1: Chessman) {
@@ -127,7 +131,7 @@ const mutations = {
 
 const actions = {
   async setGameInfo({ commit, rootState, state }: any, data: Record<string, any>) {
-    const { room_id, status, owner_id, round, board, moves, white_lost, black_lost, countdown, model, chessman_records, phase } = data;
+    const { room_id, status, owner_id, round, board, moves, white_lost, black_lost, countdown, model, chessman_records, phase, komi } = data;
     const boardMap = new Map(JSON.stringify(board) === "{}" ? [] : board);
     state.board1.clear();
     state.board2.clear();
@@ -138,6 +142,7 @@ const actions = {
     state.blackLost = black_lost;
     state.countdown = countdown;
     state.model = model;
+    state.komi = komi ?? 7.5;
     state.records = chessman_records ?? [];
     state.phase = phase || null;
     if (status === "waiting" && data.visitor_id) {
@@ -193,7 +198,7 @@ const actions = {
     commit("initBoard");
   },
 
-  async createRoom({ commit, rootState }: any, data: { countdown: number, model: number, gameMode?: string }): Promise<false | string> {
+  async createRoom({ commit, rootState }: any, data: { countdown: number, model: number, komi?: number, gameMode?: string }): Promise<false | string> {
     const mode = data.gameMode || "pvp";
     commit("setGameMode", mode);
     
@@ -201,11 +206,12 @@ const actions = {
       // AI模式保存棋盘尺寸和倒计时
       commit("setModel", data.model);
       commit("setCountdown", data.countdown);
+      commit("setKomi", data.komi ?? 7.5);
       // AI模式不需要调用后端API，直接返回一个虚拟房间ID
       return "ai_" + Date.now();
     }
     
-    const res = await api.createRoom(rootState.user.id, data.model, data.countdown, mode);
+    const res = await api.createRoom(rootState.user.id, data.model, data.countdown, mode, data.komi ?? 7.5);
     if (!res.success) {
       return false;
     }
@@ -398,7 +404,7 @@ const actions = {
     // - Apply komi once to White
     const result1 = calculateGoResult(state.board1, state.model, 0, 0);
     const result2 = calculateGoResult(state.board2, state.model, 0, 0);
-    const KOMI_ONCE = 7.5;
+    const KOMI_ONCE = state.komi ?? 7.5;
     state.blackPoints = (result1.blackScore + result2.blackScore);
     state.whitePoints = (result1.whiteScore + result2.whiteScore + KOMI_ONCE);
     

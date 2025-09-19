@@ -24,6 +24,7 @@ pub struct CreateRoomRequest {
     model: i32,
     countdown: i32,
     game_mode: Option<String>,
+    komi: Option<f64>,
 }
 
 #[derive(Deserialize)]
@@ -95,6 +96,7 @@ pub async fn create_room(
         model: req.model,
         chessman_records: serde_json::Value::Array(vec![]),
         phase,
+        komi: req.komi.unwrap_or(7.5),
     };
 
     match state.db.create_room(&room_info).await {

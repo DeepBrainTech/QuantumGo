@@ -67,18 +67,17 @@ $secondary-color: rgba(235, 137, 79, 0.7);
         }
 
         &.score-estimator-btn {
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          background: #EB894FCC; // 与 pass/return/resign 保持一致
           font-size: 1rem;
           line-height: 1.2;
           padding: 1.2rem 1rem;
           border-radius: 1rem;
-          box-shadow: 0 6px 20px rgba(102, 126, 234, 0.3);
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
           opacity: 1 !important; // 强制显示按钮
-          
+
           &:hover {
-            background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
-            transform: translateX(8px) scale(1.02);
-            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
+            background: #D97A42; // 与其他按钮 hover 一致
+            transform: translateX(8px);
           }
 
           &:disabled {
@@ -286,6 +285,12 @@ $secondary-color: rgba(235, 137, 79, 0.7);
     align-self: center;
     bottom: 5vh;
     left: 3vw;
+  }
+  .countdown {
+    margin: 8px 0 12px 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
   }
 }
 

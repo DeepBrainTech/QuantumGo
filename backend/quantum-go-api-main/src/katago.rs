@@ -267,7 +267,7 @@ pub async fn estimate_with_score_estimator(
     
     for (idx, board) in req.boards.iter().enumerate() {
         // 使用score-estimator进行估算
-        let (ownership, territory) = score_estimator::estimate_board_score(
+        let (ownership, territory, dead_pairs) = score_estimator::estimate_board_score(
             board.board_size,
             &board.black_stones,
             &board.white_stones,
@@ -277,18 +277,9 @@ pub async fn estimate_with_score_estimator(
         ).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
         
         // 获取死子信息
-        let dead_stones = score_estimator::estimate_dead_stones(
-            board.board_size,
-            &board.black_stones,
-            &board.white_stones,
-            board.next_to_move.as_deref(),
-            1000, // 死子检测试验次数
-            0.4,  // 容差
-        ).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-        
         // 将死子坐标转换为扁平数组
         let mut dead_stones_flat = Vec::new();
-        for (x, y) in dead_stones {
+        for (x, y) in dead_pairs {
             dead_stones_flat.push(x);
             dead_stones_flat.push(y);
         }

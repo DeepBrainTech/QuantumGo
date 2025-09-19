@@ -24,23 +24,68 @@
       <div class="item btn score-estimator-btn" @click="estimateScore" :disabled="estimatingScore">
         {{ estimatingScore ? lang.text.room.estimating : (showScoreEstimate ? 'Hide Estimate' : lang.text.room.score_estimator) }}
       </div>
-    </div>
+  </div>
     <div class="body">
-      <div class="battle">
-        <div class="board-box">
-          <board-component class="board" info="board1" :can="wsStatus" :callback="putChess" 
-                          :show-score-estimate="showScoreEstimate" :score-estimate-data="scoreEstimateData1" />
+      <div v-if="stoneRemovalPhase" class="stone-removal-bar">
+        <div class="title">Stone Removal</div>
+        <div class="summary">Board1: {{ board1LeadText }} · Board2: {{ board2LeadText }}</div>
+        <div class="actions">
+          <button class="sr-btn" @click="autoScoreRemoval" :disabled="estimatingScore">Auto-score</button>
+          <button class="sr-btn" @click="clearRemoval">Clear</button>
+          <button class="sr-btn primary" @click="acceptRemoval" :disabled="myRemovalAccepted">
+            {{ myRemovalAccepted ? 'Accept ✓' : 'Accept' }}
+          </button>
+          <span class="status" :class="{ ok: oppRemovalAccepted }">Opponent {{ oppRemovalAccepted ? 'accepted' : 'pending' }}</span>
         </div>
-        <div class="board-box">
-          <board-component class="board" info="board2" :can="wsStatus" :callback="putChess" 
-                          :show-score-estimate="showScoreEstimate" :score-estimate-data="scoreEstimateData2" />
-        </div>
+      </div>
+    <div v-if="showScoreEstimate && scoreEstimateData1 && scoreEstimateData2" class="score-estimate-summary">
+      <table class="estimate-table">
+        <thead>
+          <tr>
+            <th></th>
+            <th>Winrate</th>
+            <th>Score Lead</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th>Board 1</th>
+            <td>{{ (scoreEstimateData1.winrate * 100).toFixed(1) }}%</td>
+            <td>{{ formatScoreLead(scoreEstimateData1.score_lead) }}</td>
+          </tr>
+          <tr>
+            <th>Board 2</th>
+            <td>{{ (scoreEstimateData2.winrate * 100).toFixed(1) }}%</td>
+            <td>{{ formatScoreLead(scoreEstimateData2.score_lead) }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="battle">
+      <div class="board-box">
+        <board-component class="board" info="board1" :can="wsStatus && !stoneRemovalPhase" :callback="putChess"
+                        :show-score-estimate="showScoreEstimate && !stoneRemovalPhase"
+                        :score-estimate-data="scoreEstimateData1"
+                        :stone-removal-mode="stoneRemovalPhase"
+                        :removal-set="removalSet1"
+                        @toggleRemoval="onToggleRemoval" />
+      </div>
+      <div class="board-box">
+          <board-component class="board" info="board2" :can="wsStatus && !stoneRemovalPhase" :callback="putChess"
+                          :show-score-estimate="showScoreEstimate && !stoneRemovalPhase"
+                          :score-estimate-data="scoreEstimateData2"
+                          :stone-removal-mode="stoneRemovalPhase"
+                          :removal-set="removalSet2"
+                          @toggleRemoval="onToggleRemoval" />
+      </div>
+      </div>
+      <div class="countdown" v-show="progress > 0">
+        <el-progress type="circle" striped striped-flow :percentage="progress" :color="progressColors" :format="progressLabel" />
       </div>
       <div class="input-box">
         <input class="input" v-model="input" type="text" :placeholder="lang.text.room.chat_placeholder" @keyup.enter="sendMessage" />
       </div>
     </div>
-    <el-progress class="progress" v-show="progress > 0" type="circle" striped striped-flow :percentage="progress" :color="progressColors" :format="progressLabel" />
     <barrage-component ref="barrage" />
     <el-dialog v-model="backApply" :title="lang.text.room.back_apply_title" width="500">
       <span>{{ lang.text.room.back_apply_content }}</span>
@@ -64,6 +109,7 @@ import api from "@/utils/api";
 import { ElMessage, ElMessageBox, ElProgress, ElLoading, ElDialog, ElButton } from "element-plus";
 import { Chessman } from "@/utils/types";
 import { canPutChess } from "@/utils/chess";
+import { calculateGoResult } from "@/utils/chess2";
 import Config from "@/config";
 
 const route = useRoute();
@@ -98,6 +144,12 @@ const estimatingScore = ref(false);
 const showScoreEstimate = ref(false);
 const scoreEstimateData1 = ref<any>(null);
 const scoreEstimateData2 = ref<any>(null);
+// 石子移除（终局点目）
+const stoneRemovalPhase = ref(false);
+const removalSet1 = ref<Set<string>>(new Set());
+const removalSet2 = ref<Set<string>>(new Set());
+const myRemovalAccepted = ref(false);
+const oppRemovalAccepted = ref(false);
 
 let roomId: string;
 onMounted(async () => {
@@ -167,9 +219,10 @@ const initGame = async (data: Record<string, any>) => {
         // 对方 PASS 逻辑
         const currentPlayer = chessman.type;
         if (lastActionWasPass.value && lastPassPlayer.value !== currentPlayer) {
-          // 双方连续 PASS，终局并判胜（量子规则：白方仅贴一次目，已计入 whitePoints）
-          const winner = game.value.blackPoints > game.value.whitePoints ? "black" : "white";
-          ws.send(JSON.stringify({ type: "setWinner", data: { winner } }));
+          // 双方连续 PASS -> 进入石子移除阶段
+          enterStoneRemoval();
+          // 通知对方进入石子移除
+          ws.send(JSON.stringify({ type: "stoneRemovalStart", data: {} }));
           return;
         }
         lastActionWasPass.value = true;
@@ -209,6 +262,14 @@ const initGame = async (data: Record<string, any>) => {
     } else if (data.type === "startGame") {
       game.value.status = "playing";
       ElMessage.success(lang.value.text.room.start_game);
+    } else if (data.type === "stoneRemovalStart") {
+      enterStoneRemoval();
+    } else if (data.type === "stoneRemovalUpdate") {
+      applyRemoteRemoval(data.data);
+    } else if (data.type === "stoneRemovalAccept") {
+      oppRemovalAccepted.value = true;
+      // 若双方都已接受并集合一致，则终局
+      tryFinishAfterAcceptance();
     } else if (data.type === "setWinner") {
       store.commit("game/setStatus", "finished");
       store.commit("game/setRound", false);
@@ -309,8 +370,9 @@ const passChess = () => {
   // 连续两次 PASS：如果上一手是对方 PASS，我方再 PASS 直接终局
   const currentPlayer = game.value.camp;
   if (lastActionWasPass.value && lastPassPlayer.value !== currentPlayer) {
-    const winner = game.value.blackPoints > game.value.whitePoints ? "black" : "white";
-    ws.send(JSON.stringify({ type: "setWinner", data: { winner } }));
+    // 连续 PASS -> 进入石子移除
+    enterStoneRemoval();
+    ws.send(JSON.stringify({ type: "stoneRemovalStart", data: {} }));
     return;
   }
   ws.send(JSON.stringify({
@@ -478,10 +540,7 @@ const estimateScore = async () => {
       console.log('scoreEstimateData1 set to:', scoreEstimateData1.value);
       console.log('scoreEstimateData2 set to:', scoreEstimateData2.value);
       
-      ElMessage.success({
-        message: `Board1: Score Lead ${result1.score_lead.toFixed(1)}, Winrate ${(result1.winrate * 100).toFixed(1)}% | Board2: Score Lead ${result2.score_lead.toFixed(1)}, Winrate ${(result2.winrate * 100).toFixed(1)}%`,
-        grouping: true
-      });
+      // Inline summary table replaces toast message
     } else {
       console.log('No boards in response or insufficient boards array');
       ElMessage.error({
@@ -507,8 +566,209 @@ const getPositionStr = (index: number): string => {
   const y = Math.floor((index - 1) / game.value.model) + 1;
   return `${x},${y}`;
 };
+
+// 进入石子移除阶段
+const enterStoneRemoval = async () => {
+  stoneRemovalPhase.value = true;
+  showScoreEstimate.value = false;
+  myRemovalAccepted.value = false;
+  oppRemovalAccepted.value = false;
+  // 初始使用一次自动点目作为参考
+  await autoScoreRemoval();
+};
+
+// 根据估算器自动标记死子
+const autoScoreRemoval = async () => {
+  try {
+    estimatingScore.value = true;
+    // 复用现有API
+    const assemble = (board: Map<string, any>) => {
+      const b: string[] = [], w: string[] = [];
+      for (let i = 1; i <= game.value.model * game.value.model; i++) {
+        const pos = getPositionStr(i);
+        const c = board.get(pos);
+        if (!c) continue;
+        if (c.type === 'black') b.push(pos); else w.push(pos);
+      }
+      return { b, w };
+    };
+    const a1 = assemble(game.value.board1);
+    const a2 = assemble(game.value.board2);
+    const response = await api.scoreEstimate({
+      boards: [
+        { board_size: game.value.model, black_stones: a1.b, white_stones: a1.w, next_to_move: game.value.round ? 'black' : 'white' },
+        { board_size: game.value.model, black_stones: a2.b, white_stones: a2.w, next_to_move: game.value.round ? 'black' : 'white' }
+      ]
+    });
+    const resp = (response as any).data || response;
+    const r1 = resp.boards?.[0];
+    const r2 = resp.boards?.[1];
+    if (r1 && r1.dead_stones) {
+      const s = new Set<string>();
+      for (let i = 0; i < r1.dead_stones.length; i += 2) {
+        s.add(`${r1.dead_stones[i] + 1},${r1.dead_stones[i + 1] + 1}`);
+      }
+      removalSet1.value = s;
+    }
+    if (r2 && r2.dead_stones) {
+      const s = new Set<string>();
+      for (let i = 0; i < r2.dead_stones.length; i += 2) {
+        s.add(`${r2.dead_stones[i] + 1},${r2.dead_stones[i + 1] + 1}`);
+      }
+      removalSet2.value = s;
+    }
+    myRemovalAccepted.value = false;
+    oppRemovalAccepted.value = false;
+    ws.send(JSON.stringify({ type: 'stoneRemovalUpdate', data: { board1: [...removalSet1.value], board2: [...removalSet2.value] } }));
+  } finally {
+    estimatingScore.value = false;
+  }
+};
+
+const clearRemoval = () => {
+  removalSet1.value = new Set();
+  removalSet2.value = new Set();
+  myRemovalAccepted.value = false;
+  oppRemovalAccepted.value = false;
+  ws.send(JSON.stringify({ type: 'stoneRemovalUpdate', data: { board1: [], board2: [] } }));
+};
+
+const onToggleRemoval = (pos: string, which: string) => {
+  const set = which === 'board1' ? removalSet1.value : removalSet2.value;
+  if (set.has(pos)) set.delete(pos); else set.add(pos);
+  myRemovalAccepted.value = false;
+  oppRemovalAccepted.value = false;
+  ws.send(JSON.stringify({ type: 'stoneRemovalUpdate', data: { board1: [...removalSet1.value], board2: [...removalSet2.value] } }));
+};
+
+const applyRemoteRemoval = (payload: any) => {
+  removalSet1.value = new Set<string>(payload.board1 || []);
+  removalSet2.value = new Set<string>(payload.board2 || []);
+  myRemovalAccepted.value = false; // 远端更新撤销双方的接受
+  oppRemovalAccepted.value = false;
+};
+
+const acceptRemoval = () => {
+  myRemovalAccepted.value = true;
+  ws.send(JSON.stringify({ type: 'stoneRemovalAccept', data: { board1: [...removalSet1.value], board2: [...removalSet2.value] } }));
+  tryFinishAfterAcceptance();
+};
+
+const setsEqual = (a: Set<string>, b: Set<string>) => {
+  if (a.size !== b.size) return false;
+  for (const x of a) if (!b.has(x)) return false;
+  return true;
+};
+
+const tryFinishAfterAcceptance = () => {
+  if (!myRemovalAccepted.value || !oppRemovalAccepted.value) return;
+  // 双方都已接受，直接根据选择的死子计算结果
+  const cloneBoard = (src: Map<string, any>, removed: Set<string>) => {
+    const m = new Map<string, any>();
+    src.forEach((v, k) => { if (!removed.has(k)) m.set(k, v); });
+    return m;
+  };
+  const b1 = cloneBoard(game.value.board1, removalSet1.value);
+  const b2 = cloneBoard(game.value.board2, removalSet2.value);
+  const r1 = calculateGoResult(b1 as any, game.value.model, 0, 0);
+  const r2 = calculateGoResult(b2 as any, game.value.model, 0, 0);
+  const KOMI_ONCE = game.value.komi ?? 7.5;
+  const blackTotal = r1.blackScore + r2.blackScore;
+  const whiteTotal = r1.whiteScore + r2.whiteScore + KOMI_ONCE;
+  const winner = blackTotal > whiteTotal ? 'black' : 'white';
+  ws.send(JSON.stringify({ type: 'setWinner', data: { winner } }));
+};
+
+// 点目阶段中部展示：当前两盘的 b+/w+ 领先信息（不含贴目）
+const computeBoardLeadText = (src: Map<string, any>, removed: Set<string>) => {
+  // 构建“去除死子”的棋盘
+  const m = new Map<string, { type: 'black' | 'white' }>();
+  src.forEach((c: any, pos: string) => {
+    if (!removed.has(pos)) m.set(pos, { type: c.type });
+  });
+  const r = calculateGoResult(m as any, game.value.model, 0, 0);
+  const lead = r.blackScore - r.whiteScore;
+  return formatScoreLead(lead);
+};
+
+const board1LeadText = computed(() => computeBoardLeadText(game.value.board1, removalSet1.value));
+const board2LeadText = computed(() => computeBoardLeadText(game.value.board2, removalSet2.value));
+
+// 将 score_lead 显示为 b+X / w+X 的通用格式
+const formatScoreLead = (lead: number): string => {
+  if (lead > 0.0001) return `B+${lead.toFixed(1)}`; // 黑领先
+  if (lead < -0.0001) return `W+${Math.abs(lead).toFixed(1)}`; // 白领先
+  return '0.0'; // 平衡
+};
 </script>
 
 <style scoped lang="scss">
 @use "./index.scss" as *;
+
+.score-estimate-summary {
+  margin: 0 6vw 1rem 6vw;
+  display: flex;
+  justify-content: center;
+}
+
+.estimate-table {
+  border-collapse: collapse;
+  min-width: 320px;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(4px);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+}
+
+.estimate-table th,
+.estimate-table td {
+  padding: 10px 14px;
+  text-align: center;
+  border-bottom: 1px solid rgba(0,0,0,0.06);
+  color: #6E4C41;
+}
+
+.estimate-table thead th {
+  background: #EB894F;
+  color: #fff;
+}
+
+.estimate-table tbody tr:last-child td { border-bottom: none; }
+.estimate-table tbody th { text-align: left; padding-left: 16px; }
+
+.stone-removal-bar {
+  margin: 0 6vw 1rem 6vw;
+  padding: 10px 14px;
+  background: rgba(235, 137, 79, 0.12);
+  border: 1px solid rgba(235, 137, 79, 0.25);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+  color: #6E4C41;
+}
+
+.stone-removal-bar .title {
+  font-weight: 700;
+}
+
+.stone-removal-bar .summary {
+  flex: 1;
+  text-align: center;
+  font-weight: 600;
+}
+
+.stone-removal-bar .actions { display: flex; gap: 10px; align-items: center; }
+.sr-btn {
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(0,0,0,0.08);
+  background: #fff;
+  cursor: pointer;
+}
+.sr-btn.primary { background: #EB894F; color: #fff; border-color: #EB894F; }
+.status { margin-left: 8px; opacity: 0.85; }
+.status.ok { color: #2e7d32; font-weight: 600; }
 </style>
