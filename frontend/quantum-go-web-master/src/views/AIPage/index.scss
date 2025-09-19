@@ -44,9 +44,11 @@ $secondary-color: rgba(235, 137, 79, 0.7);
         animation: btnSlide 0.7s ease 0.9s forwards
       }
 
-      // 新增了“Score Estimator”按钮后，Score 面板成为第5项，需要补充动画以显现
       &:nth-child(5) {
         animation: btnSlide 0.7s ease 1.1s forwards
+      }
+      &:nth-child(6) {
+        animation: btnSlide 0.7s ease 1.3s forwards
       }
 
       &.btn {

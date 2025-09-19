@@ -23,6 +23,7 @@
       <div class="item btn score-estimator-btn" @click="estimateScore" :disabled="estimatingScore">
         {{ estimatingScore ? lang.text.room.estimating : (showScoreEstimate ? 'Hide Estimate' : lang.text.room.score_estimator) }}
       </div>
+      <div class="item btn end-game-btn" @click="endGameNow">End Game</div>
     </div>
     <div class="body">
       <div v-if="stoneRemovalPhase" class="stone-removal-bar">
@@ -60,7 +61,7 @@
       </div>
       <div class="battle">
         <div class="board-box">
-          <board-component class="board" info="board1" :can="true" :callback="onBoardClick"
+          <board-component class="board" info="board1" :can="!stoneRemovalPhase" :callback="onBoardClick"
             :show-score-estimate="showScoreEstimate && !stoneRemovalPhase"
             :score-estimate-data="scoreEstimateData1"
             :stone-removal-mode="stoneRemovalPhase"
@@ -68,7 +69,7 @@
             @toggleRemoval="onToggleRemoval" />
         </div>
         <div class="board-box">
-          <board-component class="board" info="board2" :can="true" :callback="onBoardClick"
+          <board-component class="board" info="board2" :can="!stoneRemovalPhase" :callback="onBoardClick"
             :show-score-estimate="showScoreEstimate && !stoneRemovalPhase"
             :score-estimate-data="scoreEstimateData2"
             :stone-removal-mode="stoneRemovalPhase"
@@ -533,6 +534,7 @@ const getAIMove = async (): Promise<{ kind: 'move' | 'pass' | 'resign', position
 
 // AI下棋
 const makeAIMove = async () => {
+  if (stoneRemovalPhase.value) { return; }
   if (game.value.status !== 'playing' || game.value.round) {
     return; // 不是AI的回合
   }
@@ -646,6 +648,7 @@ const makeAIMove = async () => {
 
 // 棋盘点击处理
 const onBoardClick = (position: string, board: string) => {
+  if (stoneRemovalPhase.value) { return; }
   // 只有在玩家回合且AI不在思考时才允许下棋
   if (!game.value.round || isAIThinking.value) {
     return;
@@ -657,6 +660,7 @@ const onBoardClick = (position: string, board: string) => {
 
 // 玩家下棋
 const putChess = async (position: string) => {
+  if (stoneRemovalPhase.value) { return; }
   // 玩家下棋，停止倒计时
   stopTimer();
   
@@ -701,6 +705,7 @@ const putChess = async (position: string) => {
 
 // 悔棋
 const backChess = async () => {
+  if (stoneRemovalPhase.value) { return; }
   if (!game.value.round) {
     ElMessage.warning({ message: lang.value.text.room.not_round, grouping: true });
     return;
@@ -716,6 +721,7 @@ const backChess = async () => {
 
 // 认输
 const resign = () => {
+  if (stoneRemovalPhase.value) { return; }
   ElMessageBox.confirm(lang.value.text.room.resign_confirm, lang.value.text.index.confirm, {
     confirmButtonText: lang.value.text.index.confirm,
     cancelButtonText: lang.value.text.index.cancel,
@@ -729,6 +735,7 @@ const resign = () => {
 
 // 弃权
 const passChess = () => {
+  if (stoneRemovalPhase.value) { return; }
   if (!game.value.round) {
     ElMessage.warning({ message: lang.value.text.room.not_round, grouping: true });
     return;
@@ -803,6 +810,14 @@ const acceptRemoval = () => {
   const winnerName = blackTotal > whiteTotal ? lang.value.text.room.side_black : lang.value.text.room.side_white;
   const text = (lang.value.text.room.game_over_side_win as string).replace('{side}', winnerName);
   ElMessageBox.alert(text, lang.value.text.room.finish_title, { confirmButtonText: 'OK' });
+};
+
+// 一键终局：进入点目并自动标注死子，但不自动接受
+//（AI 默认已接受，玩家需手动点击 Accept 完成结算）
+const endGameNow = async () => {
+  stopTimer();
+  await enterStoneRemoval();
+  // 保留在点目阶段，等待玩家手动点击 Accept
 };
 
 // 发送消息
