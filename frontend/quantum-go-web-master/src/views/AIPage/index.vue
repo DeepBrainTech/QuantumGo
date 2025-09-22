@@ -101,6 +101,17 @@
       </div>
     </div>
     <barrage-component ref="barrage" />
+    <!-- Finish dialog with SGF download -->
+    <el-dialog v-model="finishVisible" :title="lang.text.room.finish_title" width="520"
+               :close-on-click-modal="false" :close-on-press-escape="false">
+      <div style="margin-bottom: 12px;">{{ finishMessage }}</div>
+      <template #footer>
+        <div>
+          <el-button @click="downloadSGF">Download SGF</el-button>
+          <el-button type="primary" @click="finishVisible = false">OK</el-button>
+        </div>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -110,11 +121,12 @@ import BarrageComponent from "@/components/BarrageComponent/index.vue";
 import { useStore } from "vuex";
 import { computed, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { ElMessage, ElMessageBox, ElProgress, ElLoading } from "element-plus";
+import { ElMessage, ElMessageBox, ElProgress, ElLoading, ElDialog, ElButton } from "element-plus";
 import { Chessman, ChessmanType } from "@/utils/types";
 import api from "@/utils/api";
 import { canPutChess, canPutChessSituationalSuperko, hashBoardWithTurn } from "@/utils/chess";
 import { calculateGoResult } from "@/utils/chess2";
+import { exportQuantumSGF } from "@/utils/sgf";
 
 const route = useRoute();
 const router = useRouter();
@@ -126,6 +138,10 @@ const lang = computed(() => store.state.lang);
 
 const barrage = ref();
 const input = ref("");
+
+// Finish dialog with SGF download
+const finishVisible = ref(false);
+const finishMessage = ref('');
 
 // 进度条相关
 const progressColors = ref([
@@ -822,8 +838,23 @@ const acceptRemoval = () => {
   const KOMI_ONCE = game.value.komi ?? 7.5; const blackTotal = r1.blackScore + r2.blackScore; const whiteTotal = r1.whiteScore + r2.whiteScore + KOMI_ONCE;
   store.commit('game/setStatus', 'finished'); store.commit('game/setRound', false);
   const winnerName = blackTotal > whiteTotal ? lang.value.text.room.side_black : lang.value.text.room.side_white;
-  const text = (lang.value.text.room.game_over_side_win as string).replace('{side}', winnerName);
-  ElMessageBox.alert(text, lang.value.text.room.finish_title, { confirmButtonText: 'OK' });
+  finishMessage.value = (lang.value.text.room.game_over_side_win as string).replace('{side}', winnerName);
+  finishVisible.value = true;
+};
+
+const downloadSGF = () => {
+  try {
+    const sgf = exportQuantumSGF(game.value.records, game.value.model, game.value.komi ?? 7.5);
+    const blob = new Blob([sgf], { type: 'application/x-go-sgf;charset=utf-8' });
+    const a = document.createElement('a');
+    a.download = `quantumgo_ai_${Date.now()}.sgf`;
+    a.href = URL.createObjectURL(blob);
+    a.click();
+    URL.revokeObjectURL(a.href);
+  } catch (e) {
+    console.error('SGF export failed', e);
+    ElMessage.error({ message: 'SGF export failed', grouping: true });
+  }
 };
 
 // 一键终局：进入点目并自动标注死子，但不自动接受
@@ -878,3 +909,6 @@ const step = (delta: number) => {
 }
 .rv-btn:disabled { opacity: 0.5; cursor: default; }
 </style>
+
+<!-- Finish dialog with SGF download -->
+ 

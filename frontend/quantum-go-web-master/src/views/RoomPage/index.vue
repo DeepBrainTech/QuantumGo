@@ -114,6 +114,18 @@
         </div>
       </template>
     </el-dialog>
+
+    <!-- Finish dialog with SGF download -->
+    <el-dialog v-model="finishVisible" :title="lang.text.room.finish_title" width="520"
+               :close-on-click-modal="false" :close-on-press-escape="false">
+      <div style="margin-bottom: 12px;">{{ finishMessage }}</div>
+      <template #footer>
+        <div>
+          <el-button @click="downloadSGF">Download SGF</el-button>
+          <el-button type="primary" @click="finishVisible = false">OK</el-button>
+        </div>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -129,6 +141,7 @@ import { Chessman } from "@/utils/types";
 import { canPutChess } from "@/utils/chess";
 import { calculateGoResult } from "@/utils/chess2";
 import Config from "@/config";
+import { exportQuantumSGF } from "@/utils/sgf";
 
 const route = useRoute();
 const router = useRouter();
@@ -168,6 +181,10 @@ const removalSet1 = ref<Set<string>>(new Set());
 const removalSet2 = ref<Set<string>>(new Set());
 const myRemovalAccepted = ref(false);
 const oppRemovalAccepted = ref(false);
+
+// Finish dialog with SGF download
+const finishVisible = ref(false);
+const finishMessage = ref('');
 
 let roomId: string;
 onMounted(async () => {
@@ -245,6 +262,9 @@ const initGame = async (data: Record<string, any>) => {
         }
         lastActionWasPass.value = true;
         lastPassPlayer.value = currentPlayer;
+        if (currentPlayer !== game.value.camp) {
+          ElMessage.info({ message: lang.value.text.room.opponent_pass, grouping: true });
+        }
         // 切换到我方回合与倒计时
       }
       // 同步board2状态（如果存在）
@@ -295,11 +315,8 @@ const initGame = async (data: Record<string, any>) => {
       store.commit("game/setRound", false);
       lastActionWasPass.value = false;
       const winner = data.data.winner;
-      if (winner === game.value.camp) {
-        ElMessageBox.alert(lang.value.text.room.winner, lang.value.text.room.finish_title, { confirmButtonText: "OK" });
-      } else {
-        ElMessageBox.alert(lang.value.text.room.loser, lang.value.text.room.finish_title, { confirmButtonText: "OK" });
-      }
+      finishMessage.value = winner === 'black' ? (lang.value.text.room.game_over_side_win as string).replace('{side}', lang.value.text.room.side_black) : (lang.value.text.room.game_over_side_win as string).replace('{side}', lang.value.text.room.side_white);
+      finishVisible.value = true;
     } else if (data.type === "updateRoomInfo") {
       store.dispatch("game/updateRoomInfo", data.data);
     } else if (data.type === "sendMessage") {
@@ -733,6 +750,21 @@ const step = (delta: number) => {
   store.dispatch('game/reviewGoto', target);
 };
 
+const downloadSGF = () => {
+  try {
+    const sgf = exportQuantumSGF(game.value.records, game.value.model, game.value.komi ?? 7.5);
+    const blob = new Blob([sgf], { type: 'application/x-go-sgf;charset=utf-8' });
+    const a = document.createElement('a');
+    const id = game.value.roomId || 'local';
+    a.download = `quantumgo_${id}_${Date.now()}.sgf`;
+    a.href = URL.createObjectURL(blob);
+    a.click();
+    URL.revokeObjectURL(a.href);
+  } catch (e) {
+    console.error('SGF export failed', e);
+    ElMessage.error({ message: 'SGF export failed', grouping: true });
+  }
+};
 </script>
 
 <style scoped lang="scss">
