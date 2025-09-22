@@ -104,7 +104,8 @@
       </div>
     </div>
     <barrage-component ref="barrage" />
-    <el-dialog v-model="backApply" :title="lang.text.room.back_apply_title" width="500">
+    <el-dialog v-model="backApply" :title="lang.text.room.back_apply_title" width="500"
+               :close-on-click-modal="false" :close-on-press-escape="false" :show-close="false">
       <span>{{ lang.text.room.back_apply_content }}</span>
       <template #footer>
         <div>
