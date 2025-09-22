@@ -93,6 +93,13 @@ const createRoomSubmit = async () => {
     ElMessage({ message: lang.value.text.index.create_room_error_empty_options, grouping: true, type: "error" });
     return;
   }
+  // Require login for PvP rooms
+  // Require login for all modes (PVP and AI)
+  if (!user.value.isLogin) {
+    const fallback = (lang.value.active === 'cn') ? '请先登录' : 'Log in to continue.';
+    ElMessage({ message: (lang.value.text.login?.login_required ?? fallback), grouping: true, type: "warning" });
+    return;
+  }
   const roomId = await store.dispatch("game/createRoom", {gameMode, countdown, model, komi});
   if (roomId === false) {
     ElMessage({ message: lang.value.text.index.create_room_error, grouping: true, type: "error" });

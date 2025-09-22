@@ -30,6 +30,11 @@ const state = () => ({
   records: [] as ChessmanRecords,
   phase: null as string | null,
   gameMode: "pvp" as "pvp" | "ai"
+  ,
+  // Review mode state
+  reviewMode: false as boolean,
+  // Number of records applied on board for preview (0..records.length)
+  reviewIndex: 0 as number
 });
 
 const mutations = {
@@ -126,6 +131,17 @@ const mutations = {
     // 记录初始空局面
     state.history1.add(hashBoardWithTurn(state.board1, "black"));
     state.history2.add(hashBoardWithTurn(state.board2, "black"));
+    // Reset review state
+    state.reviewMode = false;
+    state.reviewIndex = 0;
+  },
+
+  setReviewMode(state: any, on: boolean) {
+    state.reviewMode = on;
+  },
+
+  setReviewIndex(state: any, idx: number) {
+    state.reviewIndex = idx;
   }
 };
 
@@ -179,6 +195,9 @@ const actions = {
       state.lastMove1 = null;
       state.lastMove2 = null;
     }
+    // Initialize review to current end
+    commit("setReviewIndex", state.records.length);
+    commit("setReviewMode", false);
   },
 
   async setGameStatus({ commit }: any, status: string) {
@@ -407,10 +426,99 @@ const actions = {
     const KOMI_ONCE = state.komi ?? 7.5;
     state.blackPoints = (result1.blackScore + result2.blackScore);
     state.whitePoints = (result1.whiteScore + result2.whiteScore + KOMI_ONCE);
+    // Move live cursor to end on new move
+    commit("setReviewIndex", state.records.length);
+    commit("setReviewMode", false);
     
     return true;
   },
 
+  // Build the board state by applying the first `to` records (0..records.length)
+  async reviewGoto({ commit, state }: any, to: number) {
+    const target = Math.max(0, Math.min(to, state.records.length));
+
+    // Reset boards and counters without changing overall game status
+    state.board1.clear();
+    state.board2.clear();
+    state.blackLost = 0;
+    state.whiteLost = 0;
+    state.blackQuantum = "";
+    state.whiteQuantum = "";
+    state.subStatus = target === 0 ? "black" : (target === 1 ? "white" : "common");
+    state.lastMove1 = null;
+    state.lastMove2 = null;
+    state.history1.clear();
+    state.history2.clear();
+
+    // Re-apply records up to target using live rules to keep boards in sync
+    const opposite = (t: ChessmanType): ChessmanType => (t === "black" ? "white" : "black");
+    for (let i = 0; i < target; i++) {
+      const r = state.records[i];
+      if (!r.add || r.add.length === 0) continue;
+      const add = r.add[0];
+
+      // Place stones
+      commit("setChess", add);
+      state.lastMove1 = add.position;
+      state.lastMove2 = add.brother;
+
+      // Track quantum anchors
+      if (i === 0) {
+        state.blackQuantum = add.position;
+      } else if (i === 1) {
+        state.whiteQuantum = add.position;
+      }
+
+      // During the first two moves, board2 colors are inverted
+      if (i <= 1) {
+        const b2First = state.board2.get(add.position);
+        if (b2First) b2First.type = opposite(add.type);
+        // If we already know both anchors, ensure both are inverted correctly
+        if (i === 1) {
+          const b2b = state.board2.get(state.blackQuantum);
+          const b2w = state.board2.get(state.whiteQuantum);
+          if (b2b) b2b.type = opposite(state.board1.get(state.blackQuantum)?.type || 'black');
+          if (b2w) b2w.type = opposite(state.board1.get(state.whiteQuantum)?.type || 'white');
+        }
+      }
+
+      // Compute captures like live play and apply entanglement
+      const type1: ChessmanType = add.type;
+      const type2: ChessmanType = i <= 1 ? opposite(add.type) : add.type;
+      const capturedChess1 = getCapturedChess(state.board1, type1, state.model);
+      const capturedChess2 = getCapturedChess(state.board2, type2, state.model);
+      const toDelete1 = new Set<string>();
+      const toDelete2 = new Set<string>();
+      capturedChess1.forEach((p) => toDelete1.add(p));
+      capturedChess2.forEach((p) => toDelete2.add(p));
+      capturedChess1.forEach((p1) => {
+        const c1 = state.board1.get(p1);
+        if (c1) {
+          const matePos2 = c1.brother;
+          if (state.board2.has(matePos2)) toDelete2.add(matePos2);
+        }
+      });
+      capturedChess2.forEach((p2) => {
+        const c2 = state.board2.get(p2);
+        if (c2) {
+          const matePos1 = c2.brother;
+          if (state.board1.has(matePos1)) toDelete1.add(matePos1);
+        }
+      });
+      toDelete1.forEach((pos) => commit("deleteChessBoard1", pos));
+      toDelete2.forEach((pos) => commit("deleteChessBoard2", pos));
+    }
+
+    // Recalculate score like in live play
+    const result1 = calculateGoResult(state.board1, state.model, 0, 0);
+    const result2 = calculateGoResult(state.board2, state.model, 0, 0);
+    const KOMI_ONCE = state.komi ?? 7.5;
+    state.blackPoints = (result1.blackScore + result2.blackScore);
+    state.whitePoints = (result1.whiteScore + result2.whiteScore + KOMI_ONCE);
+
+    commit("setReviewIndex", target);
+    commit("setReviewMode", target !== state.records.length);
+  }
 };
 
 export default {

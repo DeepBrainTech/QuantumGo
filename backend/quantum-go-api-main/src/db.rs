@@ -6,7 +6,7 @@ use uuid::Uuid;
 use sqlx::Row;
 
 
-const MAX_CONNECTIONS: u32 = 5;
+const MAX_CONNECTIONS: u32 = 50;
 
 /// Database connection and operations handler
 #[derive(Debug)]

@@ -82,7 +82,9 @@ const emit = defineEmits(["toggleRemoval"]);
 
 const lastChess = computed(() => {
   const result = { black: "", white: "" };
-  const lastWhite = game.value.records.filter((item: ChessmanRecord) => item.add[0].type === "white").pop();
+  const upto = game.value.reviewIndex && game.value.reviewIndex > 0 ? game.value.reviewIndex : game.value.records.length;
+  const recs = game.value.records.slice(0, upto);
+  const lastWhite = recs.filter((item: ChessmanRecord) => item.add[0].type === "white").pop();
   if (lastWhite) {
     if (props.info === "board1") {
       result.white = lastWhite.add[0].position;
@@ -90,7 +92,7 @@ const lastChess = computed(() => {
       result.white = lastWhite.add[0].brother;
     }
   }
-  const lastBlack = game.value.records.filter((item: ChessmanRecord) => item.add[0].type === "black").pop();
+  const lastBlack = recs.filter((item: ChessmanRecord) => item.add[0].type === "black").pop();
   if (lastBlack) {
     if (props.info === "board1") {
       result.black = lastBlack.add[0].position;
@@ -202,7 +204,14 @@ watch(() => game.value.model, () => {
 
 const putChess = async (index: number) => {
   if (!props.can) {
-    ElMessage.warning({ message: lang.value.text.board.ws_connection_error, grouping: true });
+    // Provide clearer reasons when interaction is disabled
+    if (game.value.reviewMode) {
+      ElMessage.warning({ message: lang.value.text.board.review_cannot_play ?? "Can't play moves while viewing previous round.", grouping: true });
+    } else if (props.stoneRemovalMode) {
+      ElMessage.warning({ message: lang.value.text.board.removal_cannot_play ?? "Can't play during stone removal.", grouping: true });
+    } else {
+      ElMessage.warning({ message: lang.value.text.board.ws_connection_error, grouping: true });
+    }
     return;
   }
   if (!((game.value.round || !game.value.roomId) && game.value.status !== "finished")) {

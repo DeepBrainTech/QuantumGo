@@ -63,7 +63,7 @@
     </div>
     <div class="battle">
       <div class="board-box">
-        <board-component class="board" info="board1" :can="wsStatus && !stoneRemovalPhase" :callback="putChess"
+        <board-component class="board" info="board1" :can="wsStatus && !stoneRemovalPhase && !game.reviewMode" :callback="putChess"
                         :show-score-estimate="showScoreEstimate && !stoneRemovalPhase"
                         :score-estimate-data="scoreEstimateData1"
                         :stone-removal-mode="stoneRemovalPhase"
@@ -71,7 +71,7 @@
                         @toggleRemoval="onToggleRemoval" />
       </div>
       <div class="board-box">
-          <board-component class="board" info="board2" :can="wsStatus && !stoneRemovalPhase" :callback="putChess"
+          <board-component class="board" info="board2" :can="wsStatus && !stoneRemovalPhase && !game.reviewMode" :callback="putChess"
                           :show-score-estimate="showScoreEstimate && !stoneRemovalPhase"
                           :score-estimate-data="scoreEstimateData2"
                           :stone-removal-mode="stoneRemovalPhase"
@@ -79,6 +79,21 @@
                           @toggleRemoval="onToggleRemoval" />
       </div>
       </div>
+
+      <div class="review-bar" v-if="(game.status === 'playing' || game.status === 'waiting') && game.records">
+        <div class="left">
+          <button class="rv-btn" @click="gotoStart" :disabled="currentMove === 0">&laquo;&laquo;&laquo;</button>
+          <button class="rv-btn" @click="step(-10)" :disabled="currentMove === 0">&laquo;&laquo;</button>
+          <button class="rv-btn" @click="step(-1)" :disabled="currentMove === 0">&laquo;</button>
+        </div>
+        <div class="center">{{ displayMove }} / {{ totalMoves }}</div>
+        <div class="right">
+          <button class="rv-btn" @click="step(1)" :disabled="currentMove === totalMoves">&raquo;</button>
+          <button class="rv-btn" @click="step(10)" :disabled="currentMove === totalMoves">&raquo;&raquo;</button>
+          <button class="rv-btn" @click="gotoEnd" :disabled="currentMove === totalMoves">&raquo;&raquo;&raquo;</button>
+        </div>
+      </div>
+
       <div class="countdown-slot">
         <div class="countdown-inner" :class="{ visible: progress > 0 }">
           <el-progress type="circle" striped striped-flow :percentage="progress" :color="progressColors" :format="progressLabel" />
@@ -238,6 +253,8 @@ const initGame = async (data: Record<string, any>) => {
           game.value.board2.set(position, chess);
         });
       }
+      // Keep review cursor at end when new moves arrive
+      store.dispatch('game/reviewGoto', game.value.records.length);
       store.commit("game/setRound", true);
       progress.value = 100;
       // 只有当countdown大于0时才启动倒计时
@@ -702,6 +719,19 @@ const formatScoreLead = (lead: number): string => {
   if (lead < -0.0001) return `W+${Math.abs(lead).toFixed(1)}`; // 白领先
   return '0.0'; // 平衡
 };
+
+// -------- Review helpers --------
+const totalMoves = computed(() => game.value.records?.length || 0);
+const currentMove = computed(() => game.value.reviewIndex || 0);
+const displayMove = computed(() => Math.min(currentMove.value, totalMoves.value));
+
+const gotoStart = () => store.dispatch('game/reviewGoto', 0);
+const gotoEnd = () => store.dispatch('game/reviewGoto', totalMoves.value);
+const step = (delta: number) => {
+  const target = Math.max(0, Math.min(currentMove.value + delta, totalMoves.value));
+  store.dispatch('game/reviewGoto', target);
+};
+
 </script>
 
 <style scoped lang="scss">
@@ -774,4 +804,23 @@ const formatScoreLead = (lead: number): string => {
 .sr-btn.primary { background: #EB894F; color: #fff; border-color: #EB894F; }
 .status { margin-left: 8px; opacity: 0.85; }
 .status.ok { color: #2e7d32; font-weight: 600; }
+
+/* Review bar */
+.review-bar {
+  margin: 10px 6vw;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #6E4C41;
+}
+.review-bar .center { font-weight: 700; min-width: 80px; text-align: center; }
+.review-bar .left, .review-bar .right { display: flex; gap: 8px; }
+.rv-btn {
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(0,0,0,0.1);
+  background: #fff;
+  cursor: pointer;
+}
+.rv-btn:disabled { opacity: 0.5; cursor: default; }
 </style>

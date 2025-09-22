@@ -42,7 +42,9 @@ const text = {
     },
     board: {
       put_chess_error: "No playing chess here",
-      ws_connection_error: "Game connection error"
+      ws_connection_error: "Game connection error",
+      review_cannot_play: "Can't play moves while viewing previous round.",
+      removal_cannot_play: "Can't play during stone removal."
     },
     index: {
       title: "Play Go Online",
@@ -67,7 +69,7 @@ const text = {
       countdown_placeholder: "Please select a turn time limit",
       countdown_unlimited: "Unlimited",
       cancel: "Cancel",
-      confirm: "Confirm"
+      confirm: "Confirm",
     },
     room: {
       pass: "Pass",
@@ -131,6 +133,7 @@ const text = {
       no_data: "No players found for this board size"
     },
     login: {
+      login_required: "Log in to continue.",
       title_login: "Login",
       title_register: "Register",
       label_name: "Username",
@@ -145,8 +148,9 @@ const text = {
       login_error: "Login failed, please check your username and password",
       login_success: "Welcome: ",
       register_error: "Registration failed, please check your username"
-    }
+    },
   },
+
   cn: {
     navbar: {
       logo: "量子围棋",
@@ -160,11 +164,13 @@ const text = {
     },
     board: {
       put_chess_error: "No playing chess here",
-      ws_connection_error: "游戏服务器连接错误"
+      ws_connection_error: "游戏服务器连接错误",
+      review_cannot_play: "回顾模式下无法落子",
+      removal_cannot_play: "数子阶段无法落子"
     },
     index: {
       title: "在线量子围棋对弈",
-      desc: "智弈古今 慧启心源——与AI手谈，品围棋至道，悟方寸玄机。",
+      desc: "智弈古今 慧启心源——与AI手谈, 品围棋至道, 悟方寸玄机。",
       create: "创建房间",
       join: "加入房间",
       btn_start: "开始游戏",
@@ -249,6 +255,7 @@ const text = {
       no_data: "未找到该棋盘尺寸的玩家"
     },
     login: {
+      login_required: "请先登录",
       title_login: "登录",
       title_register: "注册",
       label_name: "用户名",

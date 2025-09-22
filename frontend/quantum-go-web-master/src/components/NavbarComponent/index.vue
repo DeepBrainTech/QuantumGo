@@ -14,9 +14,18 @@
         <!--        <t-icon name="share" />-->
         <span>{{ lang.text.navbar.share }}</span>
       </button>
-      <button class="nav-button" @click="handleLogin">
-        <!--        <t-icon name="share" />-->
-        <span>{{ user.isLogin ? user.name : lang.text.navbar.login }}</span>
+      <el-dropdown v-if="user.isLogin" trigger="click" @command="onUserCommand">
+        <button class="nav-button">
+          <span>{{ user.name }}</span>
+        </button>
+        <template #dropdown>
+          <el-dropdown-menu>
+            <el-dropdown-item command="logout">Logout</el-dropdown-item>
+          </el-dropdown-menu>
+        </template>
+      </el-dropdown>
+      <button v-else class="nav-button" @click="handleLogin">
+        <span>{{ lang.text.navbar.login }}</span>
       </button>
     </div>
   </nav>
@@ -25,7 +34,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { useStore } from "vuex";
-import { ElMessage } from "element-plus";
+import { ElMessage, ElDropdown, ElDropdownMenu, ElDropdownItem } from "element-plus";
 import { copyText } from "@/utils/tools";
 import { useRouter } from 'vue-router';
 
@@ -61,6 +70,13 @@ const handleLogin = () => {
     return;
   }
   router.push('/login');
+};
+
+const onUserCommand = async (cmd: string) => {
+  if (cmd === 'logout') {
+    await store.dispatch('user/logout');
+    router.push('/');
+  }
 };
 </script>
 

@@ -61,7 +61,7 @@
       </div>
       <div class="battle">
         <div class="board-box">
-          <board-component class="board" info="board1" :can="!stoneRemovalPhase" :callback="onBoardClick"
+          <board-component class="board" info="board1" :can="!stoneRemovalPhase && !game.reviewMode" :callback="onBoardClick"
             :show-score-estimate="showScoreEstimate && !stoneRemovalPhase"
             :score-estimate-data="scoreEstimateData1"
             :stone-removal-mode="stoneRemovalPhase"
@@ -69,12 +69,26 @@
             @toggleRemoval="onToggleRemoval" />
         </div>
         <div class="board-box">
-          <board-component class="board" info="board2" :can="!stoneRemovalPhase" :callback="onBoardClick"
+          <board-component class="board" info="board2" :can="!stoneRemovalPhase && !game.reviewMode" :callback="onBoardClick"
             :show-score-estimate="showScoreEstimate && !stoneRemovalPhase"
             :score-estimate-data="scoreEstimateData2"
             :stone-removal-mode="stoneRemovalPhase"
             :removal-set="removalSet2"
             @toggleRemoval="onToggleRemoval" />
+        </div>
+      </div>
+      <!-- Review controls -->
+      <div class="review-bar" v-if="game.status === 'playing' && game.records">
+        <div class="left">
+          <button class="rv-btn" @click="gotoStart" :disabled="currentMove === 0">&laquo;&laquo;&laquo;</button>
+          <button class="rv-btn" @click="step(-10)" :disabled="currentMove === 0">&laquo;&laquo;</button>
+          <button class="rv-btn" @click="step(-1)" :disabled="currentMove === 0">&laquo;</button>
+        </div>
+        <div class="center">{{ displayMove }} / {{ totalMoves }}</div>
+        <div class="right">
+          <button class="rv-btn" @click="step(1)" :disabled="currentMove === totalMoves">&raquo;</button>
+          <button class="rv-btn" @click="step(10)" :disabled="currentMove === totalMoves">&raquo;&raquo;</button>
+          <button class="rv-btn" @click="gotoEnd" :disabled="currentMove === totalMoves">&raquo;&raquo;&raquo;</button>
         </div>
       </div>
       <div class="countdown-slot">
@@ -829,8 +843,38 @@ const sendMessage = async () => {
   input.value = "";
   barrage.value.sendBullet(message, 0);
 };
+
+// -------- Review helpers --------
+const totalMoves = computed(() => game.value.records?.length || 0);
+const currentMove = computed(() => game.value.reviewIndex || 0);
+const displayMove = computed(() => Math.min(currentMove.value, totalMoves.value));
+const gotoStart = () => store.dispatch('game/reviewGoto', 0);
+const gotoEnd = () => store.dispatch('game/reviewGoto', totalMoves.value);
+const step = (delta: number) => {
+  const target = Math.max(0, Math.min(currentMove.value + delta, totalMoves.value));
+  store.dispatch('game/reviewGoto', target);
+};
 </script>
 
 <style scoped lang="scss">
 @use "./index.scss" as *;
+
+/* Review bar */
+.review-bar {
+  margin: 10px 6vw;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #6E4C41;
+}
+.review-bar .center { font-weight: 700; min-width: 80px; text-align: center; }
+.review-bar .left, .review-bar .right { display: flex; gap: 8px; }
+.rv-btn {
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(0,0,0,0.1);
+  background: #fff;
+  cursor: pointer;
+}
+.rv-btn:disabled { opacity: 0.5; cursor: default; }
 </style>
