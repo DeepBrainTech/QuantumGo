@@ -37,7 +37,7 @@
           <span class="status ok">{{ lang.text.room.opponent_accepted }}</span>
         </div>
       </div>
-      <div v-if="showScoreEstimate && scoreEstimateData1 && scoreEstimateData2" class="score-estimate-summary">
+      <div v-if="showScoreEstimate && scoreEstimateData1 && scoreEstimateData2 && !stoneRemovalPhase" class="score-estimate-summary">
         <table class="estimate-table">
           <thead>
             <tr>
@@ -50,12 +50,12 @@
             <tr>
               <th>{{ lang.text.room.board1 }}</th>
               <td>{{ (scoreEstimateData1.winrate * 100).toFixed(1) }}%</td>
-              <td>{{ formatScoreLead(scoreEstimateData1.score_lead) }}</td>
+              <td>{{ board1ScoreLead }}</td>
             </tr>
             <tr>
               <th>{{ lang.text.room.board2 }}</th>
               <td>{{ (scoreEstimateData2.winrate * 100).toFixed(1) }}%</td>
-              <td>{{ formatScoreLead(scoreEstimateData2.score_lead) }}</td>
+              <td>{{ board2ScoreLead }}</td>
             </tr>
           </tbody>
         </table>
@@ -109,8 +109,57 @@
       <template #footer>
         <div>
           <el-button @click="downloadSGF">Download SGF</el-button>
+          <el-button @click="showScoreDetail">{{ lang.text.room.score_detail }}</el-button>
           <el-button type="primary" @click="finishVisible = false">OK</el-button>
         </div>
+      </template>
+    </el-dialog>
+
+    <!-- Score Detail dialog -->
+    <el-dialog v-model="scoreDetailVisible" :title="lang.text.room.score_detail" width="600">
+      <div class="score-detail-content">
+        <table class="score-detail-table">
+          <thead>
+            <tr>
+              <th></th>
+              <th>{{ lang.text.room.area }}</th>
+              <th>{{ lang.text.room.komi }}</th>
+              <th>{{ lang.text.room.board1 }}</th>
+              <th>{{ lang.text.room.board2 }}</th>
+              <th>{{ lang.text.room.total }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="player-row">
+                <div class="player-indicator black"></div>
+                <span>{{ lang.text.room.side_black }}</span>
+              </td>
+              <td>{{ scoreDetail.blackArea }}</td>
+              <td>—</td>
+              <td>{{ scoreDetail.blackBoard1 }}</td>
+              <td>{{ scoreDetail.blackBoard2 }}</td>
+              <td>{{ scoreDetail.blackTotal }}</td>
+            </tr>
+            <tr>
+              <td class="player-row">
+                <div class="player-indicator white"></div>
+                <span>{{ lang.text.room.side_white }}</span>
+              </td>
+              <td>{{ scoreDetail.whiteArea }}</td>
+              <td>{{ scoreDetail.komi }}</td>
+              <td>{{ scoreDetail.whiteBoard1 }}</td>
+              <td>{{ scoreDetail.whiteBoard2 }}</td>
+              <td>{{ scoreDetail.whiteTotal }}</td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="result-summary">
+          {{ lang.text.room.result }}: {{ scoreDetail.result }}
+        </div>
+      </div>
+      <template #footer>
+        <el-button type="primary" @click="scoreDetailVisible = false">{{ lang.text.room.close }}</el-button>
       </template>
     </el-dialog>
   </div>
@@ -144,6 +193,21 @@ const input = ref("");
 const finishVisible = ref(false);
 const finishMessage = ref('');
 
+// Score Detail dialog
+const scoreDetailVisible = ref(false);
+const scoreDetail = ref({
+  blackArea: 0,
+  whiteArea: 0,
+  komi: 0,
+  blackBoard1: 0,
+  blackBoard2: 0,
+  whiteBoard1: 0,
+  whiteBoard2: 0,
+  blackTotal: 0,
+  whiteTotal: 0,
+  result: ''
+});
+
 // 进度条相关
 const progressColors = ref([
   { color: "#f56c6c", percentage: 30 },
@@ -175,19 +239,29 @@ const removalSet1 = ref<Set<string>>(new Set());
 const removalSet2 = ref<Set<string>>(new Set());
 const myRemovalAccepted = ref(false); // AI 默认接受，只需玩家接受
 const formatScoreLead = (lead: number): string => {
-  if (lead > 0.0001) return `b+${lead.toFixed(1)}`;
-  if (lead < -0.0001) return `w+${Math.abs(lead).toFixed(1)}`;
+  if (lead > 0.0001) return `B+${lead.toFixed(1)}`;
+  if (lead < -0.0001) return `W+${Math.abs(lead).toFixed(1)}`;
   return '0.0';
 };
 const computeBoardLeadText = (src: Map<string, any>, removed: Set<string>) => {
   const m = new Map<string, { type: 'black' | 'white' }>();
   src.forEach((c: any, pos: string) => { if (!removed.has(pos)) m.set(pos, { type: c.type }); });
-  const r = calculateGoResult(m as any, game.value.model, 0, 0);
+  const r = calculateGoResult(m as any, game.value.model, 0, 0, 0);
   const lead = r.blackScore - r.whiteScore;
   return formatScoreLead(lead);
 };
 const board1LeadText = computed(() => computeBoardLeadText(game.value.board1, removalSet1.value));
 const board2LeadText = computed(() => computeBoardLeadText(game.value.board2, removalSet2.value));
+
+// 形势判断阶段的净分差计算（使用calculateGoResult）
+const computeScoreLead = (board: Map<string, any>): string => {
+  const r = calculateGoResult(board as any, game.value.model, 0, 0, 0);
+  const lead = r.blackScore - r.whiteScore;
+  return formatScoreLead(lead);
+};
+
+const board1ScoreLead = computed(() => computeScoreLead(game.value.board1));
+const board2ScoreLead = computed(() => computeScoreLead(game.value.board2));
 
 // 计算考虑死子移除的调整后分数
 const adjustedBlackScore = computed(() => {
@@ -201,8 +275,8 @@ const adjustedBlackScore = computed(() => {
   
   const b1 = cloneBoard(game.value.board1, removalSet1.value);
   const b2 = cloneBoard(game.value.board2, removalSet2.value);
-  const r1 = calculateGoResult(b1 as any, game.value.model, 0, 0);
-  const r2 = calculateGoResult(b2 as any, game.value.model, 0, 0);
+  const r1 = calculateGoResult(b1 as any, game.value.model, 0, 0, 0);
+  const r2 = calculateGoResult(b2 as any, game.value.model, 0, 0, 0);
   
   return Math.round((r1.blackScore + r2.blackScore) * 10) / 10;
 });
@@ -218,8 +292,8 @@ const adjustedWhiteScore = computed(() => {
   
   const b1 = cloneBoard(game.value.board1, removalSet1.value);
   const b2 = cloneBoard(game.value.board2, removalSet2.value);
-  const r1 = calculateGoResult(b1 as any, game.value.model, 0, 0);
-  const r2 = calculateGoResult(b2 as any, game.value.model, 0, 0);
+  const r1 = calculateGoResult(b1 as any, game.value.model, 0, 0, 0);
+  const r2 = calculateGoResult(b2 as any, game.value.model, 0, 0, 0);
   const KOMI_ONCE = game.value.komi ?? 7.5;
   
   return Math.round((r1.whiteScore + r2.whiteScore + KOMI_ONCE) * 10) / 10;
@@ -850,7 +924,15 @@ const estimateScore = async () => {
   finally { estimatingScore.value = false; }
 };
 
-const enterStoneRemoval = async () => { stoneRemovalPhase.value = true; showScoreEstimate.value = false; myRemovalAccepted.value = false; await autoScoreRemoval(); };
+const enterStoneRemoval = async () => { 
+  stoneRemovalPhase.value = true; 
+  myRemovalAccepted.value = false; 
+  await autoScoreRemoval(); 
+  // 确保在石子移除阶段显示形势判断
+  if (!showScoreEstimate.value) {
+    await estimateScore();
+  }
+};
 
 // 继续游戏（退出石子移除阶段）
 const continueGame = () => {
@@ -890,7 +972,7 @@ const acceptRemoval = () => {
   myRemovalAccepted.value = true; // AI默认接受
   const cloneBoard = (src: Map<string, any>, removed: Set<string>) => { const m = new Map<string, any>(); src.forEach((v, k) => { if (!removed.has(k)) m.set(k, v); }); return m; };
   const b1 = cloneBoard(game.value.board1, removalSet1.value); const b2 = cloneBoard(game.value.board2, removalSet2.value);
-  const r1 = calculateGoResult(b1 as any, game.value.model, 0, 0); const r2 = calculateGoResult(b2 as any, game.value.model, 0, 0);
+  const r1 = calculateGoResult(b1 as any, game.value.model, 0, 0, 0); const r2 = calculateGoResult(b2 as any, game.value.model, 0, 0, 0);
   const KOMI_ONCE = game.value.komi ?? 7.5; const blackTotal = r1.blackScore + r2.blackScore; const whiteTotal = r1.whiteScore + r2.whiteScore + KOMI_ONCE;
   store.commit('game/setStatus', 'finished'); store.commit('game/setRound', false);
   const winnerName = blackTotal > whiteTotal ? lang.value.text.room.side_black : lang.value.text.room.side_white;
@@ -911,6 +993,41 @@ const downloadSGF = () => {
     console.error('SGF export failed', e);
     ElMessage.error({ message: 'SGF export failed', grouping: true });
   }
+};
+
+const showScoreDetail = () => {
+  // 计算最终分数详情
+  const cloneBoard = (src: Map<string, any>, removed: Set<string>) => {
+    const m = new Map<string, any>();
+    src.forEach((v, k) => { if (!removed.has(k)) m.set(k, v); });
+    return m;
+  };
+  
+  const b1 = cloneBoard(game.value.board1, removalSet1.value);
+  const b2 = cloneBoard(game.value.board2, removalSet2.value);
+  const r1 = calculateGoResult(b1 as any, game.value.model, 0, 0, 0);
+  const r2 = calculateGoResult(b2 as any, game.value.model, 0, 0, 0);
+  
+  const komi = game.value.komi ?? 7.5;
+  const blackTotal = r1.blackScore + r2.blackScore;
+  const whiteTotal = r1.whiteScore + r2.whiteScore + komi;
+  
+  scoreDetail.value = {
+    blackArea: r1.blackScore + r2.blackScore,
+    whiteArea: r1.whiteScore + r2.whiteScore,
+    komi: komi,
+    blackBoard1: r1.blackScore,
+    blackBoard2: r2.blackScore,
+    whiteBoard1: r1.whiteScore,
+    whiteBoard2: r2.whiteScore,
+    blackTotal: blackTotal,
+    whiteTotal: whiteTotal,
+    result: blackTotal > whiteTotal ? 
+      `${lang.value.text.room.side_black}+${(blackTotal - whiteTotal).toFixed(1)}` : 
+      `${lang.value.text.room.side_white}+${(whiteTotal - blackTotal).toFixed(1)}`
+  };
+  
+  scoreDetailVisible.value = true;
 };
 
 // 一键终局：进入点目并自动标注死子，但不自动接受

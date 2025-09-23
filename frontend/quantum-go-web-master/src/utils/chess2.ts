@@ -6,7 +6,7 @@ type GoResult = {
   whiteScore: number;
 };
 
-export function calculateGoResult(board: Board, model: number, blackLost: number, whiteLost: number): GoResult {
+export function calculateGoResult(board: Board, model: number, blackLost: number, whiteLost: number, komi: number = 7.5): GoResult {
   // 统计存活棋子数量
   let blackStones = 0, whiteStones = 0;
   board.forEach(cell => cell.type === "black" ? blackStones++ : whiteStones++);
@@ -30,7 +30,7 @@ export function calculateGoResult(board: Board, model: number, blackLost: number
       const directions = [[-1, 0], [1, 0], [0, -1], [0, 1]];
       for (const [dx, dy] of directions) {
         const nx = cx + dx, ny = cy + dy;
-        if (nx < 0 || nx >= model || ny < 0 || ny >= model) continue;
+        if (nx < 1 || nx > model || ny < 1 || ny > model) continue;  // 1-based边界检查
 
         const neighbor = board.get(`${nx},${ny}`);
         if (neighbor) {
@@ -44,9 +44,9 @@ export function calculateGoResult(board: Board, model: number, blackLost: number
     return owner;
   };
 
-  // 遍历所有棋盘交叉点
-  for (let x = 0; x < model; x++) {
-    for (let y = 0; y < model; y++) {
+  // 遍历所有棋盘交叉点 (使用1-based坐标以匹配board的keys)
+  for (let x = 1; x <= model; x++) {
+    for (let y = 1; y <= model; y++) {
       const key = `${x},${y}`;
       if (board.has(key) || counted.has(key)) continue;
 
@@ -60,6 +60,6 @@ export function calculateGoResult(board: Board, model: number, blackLost: number
   // 计算最终结果（中国规则数子法）
   const blackScore = blackStones + blackTerritory + whiteLost;
   const whiteScore = whiteStones + whiteTerritory + blackLost;
-  const winner = blackScore - whiteScore - 7 > 0 ? "black" : "white";  // 黑贴7目
+  const winner = blackScore > whiteScore + komi ? "black" : "white";  // 使用传入的贴目 
   return { winner, blackScore, whiteScore } as GoResult;
 }

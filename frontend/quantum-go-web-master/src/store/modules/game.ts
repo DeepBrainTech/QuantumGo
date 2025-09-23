@@ -421,8 +421,8 @@ const actions = {
     // - Each board uses area scoring (no prisoner bonus); we pass 0 captures here
     // - Sum both boards' scores
     // - Apply komi once to White
-    const result1 = calculateGoResult(state.board1, state.model, 0, 0);
-    const result2 = calculateGoResult(state.board2, state.model, 0, 0);
+    const result1 = calculateGoResult(state.board1, state.model, 0, 0, 0);
+    const result2 = calculateGoResult(state.board2, state.model, 0, 0, 0);
     const KOMI_ONCE = state.komi ?? 7.5;
     state.blackPoints = (result1.blackScore + result2.blackScore);
     state.whitePoints = (result1.whiteScore + result2.whiteScore + KOMI_ONCE);
@@ -510,8 +510,8 @@ const actions = {
     }
 
     // Recalculate score like in live play
-    const result1 = calculateGoResult(state.board1, state.model, 0, 0);
-    const result2 = calculateGoResult(state.board2, state.model, 0, 0);
+    const result1 = calculateGoResult(state.board1, state.model, 0, 0, 0);
+    const result2 = calculateGoResult(state.board2, state.model, 0, 0, 0);
     const KOMI_ONCE = state.komi ?? 7.5;
     state.blackPoints = (result1.blackScore + result2.blackScore);
     state.whitePoints = (result1.whiteScore + result2.whiteScore + KOMI_ONCE);

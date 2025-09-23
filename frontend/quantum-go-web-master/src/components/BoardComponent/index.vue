@@ -28,10 +28,10 @@
              v-else @click="putChess(index)" @mouseover="onHover(index)" @mouseleave="onUnhover">
         </div>
 
-        <div v-if="showScoreEstimate && scoreEstimateData && !info.has(getPositionStr(index)) && getOwnershipValue(index) > 0.6" class="score-estimate-marker" :key="`black-marker-${index}`">
+        <div v-if="showScoreEstimate && scoreEstimateData && getOwnershipValue(index) > 0.6" class="score-estimate-marker" :key="`black-marker-${index}`">
           <div class="territory-marker black-territory" :title="`Black territory: ${getOwnershipValue(index).toFixed(2)}`"></div>
         </div>
-        <div v-if="showScoreEstimate && scoreEstimateData && !info.has(getPositionStr(index)) && getOwnershipValue(index) < -0.6" class="score-estimate-marker" :key="`white-marker-${index}`">
+        <div v-if="showScoreEstimate && scoreEstimateData && getOwnershipValue(index) < -0.6" class="score-estimate-marker" :key="`white-marker-${index}`">
           <div class="territory-marker white-territory" :title="`White territory: ${getOwnershipValue(index).toFixed(2)}`"></div>
         </div>
       </div>

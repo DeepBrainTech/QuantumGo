@@ -332,11 +332,11 @@
   z-index: 3;
 
   .territory-marker {
-    width: 34%;
-    height: 34%;
+    width: 20%;
+    height: 20%;
     min-width: 8px;
     min-height: 8px;
-    border-radius: 3px;
+    border-radius: 50%; // 改为圆形
     opacity: 0.9;
     animation: territoryPulse 1.8s ease-in-out infinite;
     border: 1px solid;

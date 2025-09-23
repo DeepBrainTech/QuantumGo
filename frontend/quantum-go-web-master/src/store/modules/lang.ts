@@ -130,7 +130,13 @@ const text = {
       board1: "Board1",
       board2: "Board2", 
       winrate: "Winrate",
-      score_lead: "Score Lead"
+      score_lead: "Score Lead",
+      score_detail: "Score Detail",
+      area: "Area",
+      komi: "Komi",
+      total: "Total",
+      result: "Result",
+      close: "Close"
     },
     join: {
       net_error: "Network error, please check your network connection.",
@@ -270,7 +276,13 @@ const text = {
       board1: "棋盘1",
       board2: "棋盘2",
       winrate: "胜率",
-      score_lead: "得分优势"
+      score_lead: "得分优势",
+      score_detail: "分数详情",
+      area: "领地",
+      komi: "贴目",
+      total: "总计",
+      result: "结果",
+      close: "关闭"
     },
     join: {
       net_error: "网络错误，请检查网络连接",
