@@ -17,8 +17,8 @@
         </div>
         <div>
           <span class="label">{{ lang.text.room.score }}</span>
-          <span class="value black animate-count">{{ game.blackPoints }}</span>
-          <span class="value white animate-count">{{ game.whitePoints }}</span>
+          <span class="value black animate-count">{{ stoneRemovalPhase ? adjustedBlackScore : game.blackPoints }}</span>
+          <span class="value white animate-count">{{ stoneRemovalPhase ? adjustedWhiteScore : game.whitePoints }}</span>
         </div>
       </div>
       <div class="item btn score-estimator-btn" @click="estimateScore" :disabled="estimatingScore">
@@ -771,6 +771,42 @@ const computeBoardLeadText = (src: Map<string, any>, removed: Set<string>) => {
 
 const board1LeadText = computed(() => computeBoardLeadText(game.value.board1, removalSet1.value));
 const board2LeadText = computed(() => computeBoardLeadText(game.value.board2, removalSet2.value));
+
+// 计算考虑死子移除的调整后分数
+const adjustedBlackScore = computed(() => {
+  if (!stoneRemovalPhase.value) return game.value.blackPoints;
+  
+  const cloneBoard = (src: Map<string, any>, removed: Set<string>) => {
+    const m = new Map<string, any>();
+    src.forEach((v, k) => { if (!removed.has(k)) m.set(k, v); });
+    return m;
+  };
+  
+  const b1 = cloneBoard(game.value.board1, removalSet1.value);
+  const b2 = cloneBoard(game.value.board2, removalSet2.value);
+  const r1 = calculateGoResult(b1 as any, game.value.model, 0, 0);
+  const r2 = calculateGoResult(b2 as any, game.value.model, 0, 0);
+  
+  return Math.round((r1.blackScore + r2.blackScore) * 10) / 10;
+});
+
+const adjustedWhiteScore = computed(() => {
+  if (!stoneRemovalPhase.value) return game.value.whitePoints;
+  
+  const cloneBoard = (src: Map<string, any>, removed: Set<string>) => {
+    const m = new Map<string, any>();
+    src.forEach((v, k) => { if (!removed.has(k)) m.set(k, v); });
+    return m;
+  };
+  
+  const b1 = cloneBoard(game.value.board1, removalSet1.value);
+  const b2 = cloneBoard(game.value.board2, removalSet2.value);
+  const r1 = calculateGoResult(b1 as any, game.value.model, 0, 0);
+  const r2 = calculateGoResult(b2 as any, game.value.model, 0, 0);
+  const KOMI_ONCE = game.value.komi ?? 7.5;
+  
+  return Math.round((r1.whiteScore + r2.whiteScore + KOMI_ONCE) * 10) / 10;
+});
 
 // 将 score_lead 显示为 b+X / w+X 的通用格式
 const formatScoreLead = (lead: number): string => {
