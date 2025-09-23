@@ -111,6 +111,53 @@
         &.black {
           box-shadow: 0 0 12px 3px rgba(0, 0, 0, 0.8);
           opacity: 0.84;
+          /* 太极：左半黑色右半橘色 */
+          background: linear-gradient(90deg, #000000 50%, #ff6d2d 50%);
+          
+          &::before {
+            content: '';
+            position: absolute;
+            top: 25%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 50%;
+            height: 50%;
+            border-radius: 50%;
+            background: #000000;
+          }
+          
+          &::after {
+            content: '';
+            position: absolute;
+            top: 75%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 50%;
+            height: 50%;
+            border-radius: 50%;
+            background: #ff6d2d;
+          }
+          
+          .dot {
+            position: absolute;
+            width: 15%;
+            height: 15%;
+            border-radius: 50%;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+          }
+          .dot.top { 
+            top: 25%; 
+            transform: translate(-50%, -50%);
+            background: #ff6d2d; 
+          }
+          .dot.bottom { 
+            top: 75%; 
+            transform: translate(-50%, -50%);
+            background: #000000; 
+            border: 1px solid rgba(255, 255, 255, 0.5);
+          }
           //animation: black 8s infinite;
           //
           //@keyframes black {
@@ -129,6 +176,52 @@
         &.white {
           box-shadow: 0 0 10px 6px rgba(200, 200, 200, 0.96);
           opacity: 0.8;
+          /* 太极：左半白色右半橘色 */
+          background: linear-gradient(90deg, #ffffff 50%, #ff6d2d 50%);
+          
+          &::before {
+            content: '';
+            position: absolute;
+            top: 25%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 50%;
+            height: 50%;
+            border-radius: 50%;
+            background: #ffffff;
+          }
+          
+          &::after {
+            content: '';
+            position: absolute;
+            top: 75%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 50%;
+            height: 50%;
+            border-radius: 50%;
+            background: #ff6d2d;
+          }
+          
+          .dot {
+            position: absolute;
+            width: 15%;
+            height: 15%;
+            border-radius: 50%;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+          }
+          .dot.top { 
+            top: 25%; 
+            transform: translate(-50%, -50%);
+            background: #ff6d2d; 
+          }
+          .dot.bottom { 
+            top: 75%; 
+            transform: translate(-50%, -50%);
+            background: #ffffff; 
+          }
           //animation: white 8s infinite;
           //
           //@keyframes white {

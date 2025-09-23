@@ -1,10 +1,10 @@
 <template>
   <div class="main">
     <div v-if="game.status === 'playing' || game.status === 'waiting'" class="operation">
-      <div class="item btn" @click="passChess">{{ lang.text.room.pass }}</div>
-      <div class="item btn" @click="backChess">{{ lang.text.room.takeback }}</div>
+      <div class="item btn" :class="{ disabled: stoneRemovalPhase }" @click="!stoneRemovalPhase && passChess()">{{ lang.text.room.pass }}</div>
+      <div class="item btn" :class="{ disabled: stoneRemovalPhase }" @click="!stoneRemovalPhase && backChess()">{{ lang.text.room.takeback }}</div>
       <!--      <div class="btn">{{ lang.text.room.draw }}</div>-->
-      <div class="item btn" @click="resign">{{ lang.text.room.resign }}</div>
+      <div class="item btn" :class="{ disabled: stoneRemovalPhase }" @click="!stoneRemovalPhase && resign()">{{ lang.text.room.resign }}</div>
       <div class="item score">
         <div>
           <span class="label">{{ lang.text.room.moves }}</span>
@@ -22,20 +22,21 @@
         </div>
       </div>
       <div class="item btn score-estimator-btn" @click="estimateScore" :disabled="estimatingScore">
-        {{ estimatingScore ? lang.text.room.estimating : (showScoreEstimate ? 'Hide Estimate' : lang.text.room.score_estimator) }}
+        {{ estimatingScore ? lang.text.room.estimating : (showScoreEstimate ? lang.text.room.hide_estimate : lang.text.room.score_estimator) }}
       </div>
   </div>
     <div class="body">
       <div v-if="stoneRemovalPhase" class="stone-removal-bar">
-        <div class="title">Stone Removal</div>
-        <div class="summary">Board1: {{ board1LeadText }} · Board2: {{ board2LeadText }}</div>
+        <div class="title">{{ lang.text.room.stone_removal_title }}</div>
+        <div class="summary">{{ lang.text.room.board1 }}: {{ board1LeadText }} · {{ lang.text.room.board2 }}: {{ board2LeadText }}</div>
         <div class="actions">
-          <button class="sr-btn" @click="autoScoreRemoval" :disabled="estimatingScore">Auto-score</button>
-          <button class="sr-btn" @click="clearRemoval">Clear</button>
+          <button class="sr-btn continue" @click="continueGame">{{ lang.text.room.continue_game }}</button>
+          <button class="sr-btn" @click="autoScoreRemoval" :disabled="estimatingScore">{{ lang.text.room.auto_score }}</button>
+          <button class="sr-btn" @click="clearRemoval">{{ lang.text.room.clear }}</button>
           <button class="sr-btn primary" @click="acceptRemoval" :disabled="myRemovalAccepted">
-            {{ myRemovalAccepted ? 'Accept ✓' : 'Accept' }}
+            {{ myRemovalAccepted ? lang.text.room.accept_confirmed : lang.text.room.accept }}
           </button>
-          <span class="status" :class="{ ok: oppRemovalAccepted }">Opponent {{ oppRemovalAccepted ? 'accepted' : 'pending' }}</span>
+          <span class="status" :class="{ ok: oppRemovalAccepted }">{{ oppRemovalAccepted ? lang.text.room.opponent_accepted : lang.text.room.opponent_pending }}</span>
         </div>
       </div>
     <div v-if="showScoreEstimate && scoreEstimateData1 && scoreEstimateData2" class="score-estimate-summary">
@@ -43,18 +44,18 @@
         <thead>
           <tr>
             <th></th>
-            <th>Winrate</th>
-            <th>Score Lead</th>
+            <th>{{ lang.text.room.winrate }}</th>
+            <th>{{ lang.text.room.score_lead }}</th>
           </tr>
         </thead>
         <tbody>
           <tr>
-            <th>Board 1</th>
+            <th>{{ lang.text.room.board1 }}</th>
             <td>{{ (scoreEstimateData1.winrate * 100).toFixed(1) }}%</td>
             <td>{{ formatScoreLead(scoreEstimateData1.score_lead) }}</td>
           </tr>
           <tr>
-            <th>Board 2</th>
+            <th>{{ lang.text.room.board2 }}</th>
             <td>{{ (scoreEstimateData2.winrate * 100).toFixed(1) }}%</td>
             <td>{{ formatScoreLead(scoreEstimateData2.score_lead) }}</td>
           </tr>
@@ -304,6 +305,18 @@ const initGame = async (data: Record<string, any>) => {
       ElMessage.success(lang.value.text.room.start_game);
     } else if (data.type === "stoneRemovalStart") {
       enterStoneRemoval();
+    } else if (data.type === "stoneRemovalExit") {
+      // 对方退出石子移除阶段
+      stoneRemovalPhase.value = false;
+      removalSet1.value = new Set();
+      removalSet2.value = new Set();
+      myRemovalAccepted.value = false;
+      oppRemovalAccepted.value = false;
+      showScoreEstimate.value = false;
+      lastActionWasPass.value = false;
+      lastPassPlayer.value = null;
+      store.commit("game/setRound", true);
+      ElMessage.info(lang.value.text.room.opponent_continue_game);
     } else if (data.type === "stoneRemovalUpdate") {
       applyRemoteRemoval(data.data);
     } else if (data.type === "stoneRemovalAccept") {
@@ -612,6 +625,34 @@ const enterStoneRemoval = async () => {
   oppRemovalAccepted.value = false;
   // 初始使用一次自动点目作为参考
   await autoScoreRemoval();
+};
+
+// 继续游戏（退出石子移除阶段）
+const continueGame = () => {
+  if (!wsStatus.value) {
+    ElMessage.warning({ message: lang.value.text.room.ws_connection_error, grouping: true });
+    return;
+  }
+  
+  // 重置石子移除相关状态
+  stoneRemovalPhase.value = false;
+  removalSet1.value = new Set();
+  removalSet2.value = new Set();
+  myRemovalAccepted.value = false;
+  oppRemovalAccepted.value = false;
+  showScoreEstimate.value = false;
+  
+  // 重置pass状态，允许继续游戏
+  lastActionWasPass.value = false;
+  lastPassPlayer.value = null;
+  
+  // 通知对方退出石子移除阶段
+  ws.send(JSON.stringify({ type: "stoneRemovalExit", data: {} }));
+  
+  // 重新启动游戏回合
+  store.commit("game/setRound", true);
+  
+  ElMessage.success(lang.value.text.room.continue_game_success);
 };
 
 // 根据估算器自动标记死子

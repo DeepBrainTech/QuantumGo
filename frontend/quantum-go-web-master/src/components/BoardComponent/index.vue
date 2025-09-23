@@ -6,9 +6,11 @@
       <div class="chessman" v-for="index in game.model * game.model" :key="index">
         <template v-if="info.has(getPositionStr(index))">
           <!-- 量子棋子：显示棋子，并在其上叠加红色 X 作为死子标记 -->
-          <div v-if="info.get(getPositionStr(index)).position !== info.get(getPositionStr(index)).brother"
+          <div v-if="isQuantumStone(getPositionStr(index))"
                :class="['quantum', info.get(getPositionStr(index)).type]" @click.stop="onToggleRemoval(index)">
             <div :class="['background', `q-${info.get(getPositionStr(index)).type}`,{reserve: info.get(getPositionStr(index)).type === 'white'}]" />
+            <div class="dot top"></div>
+            <div class="dot bottom"></div>
             <div v-if="showDead(index)" class="dead-x"></div>
           </div>
 
@@ -289,6 +291,25 @@ const onToggleRemoval = (index: number) => {
   // 通知父组件切换该点的死活
   // @ts-ignore
   emit && emit("toggleRemoval", pos, props.info);
+};
+
+// 判断是否为量子棋子
+const isQuantumStone = (position: string): boolean => {
+  const stone = info.get(position);
+  if (!stone) return false;
+  
+  // 原有的量子判断条件：position !== brother
+  if (stone.position !== stone.brother) {
+    return true;
+  }
+  
+  // 新增：前两步棋（量子阶段）也显示为量子棋
+  if (game.value.subStatus !== "common") {
+    // 检查是否是量子位置的棋子
+    return position === game.value.blackQuantum || position === game.value.whiteQuantum;
+  }
+  
+  return false;
 };
 
 const getOwnershipValue = (index: number): number => {

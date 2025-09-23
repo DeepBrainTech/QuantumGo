@@ -86,6 +86,17 @@ $secondary-color: rgba(235, 137, 79, 0.7);
             transform: none;
           }
         }
+
+        &.disabled {
+          opacity: 0.5 !important;
+          cursor: not-allowed !important;
+          pointer-events: none;
+          
+          &:hover {
+            background: #EB894FCC !important;
+            transform: none !important;
+          }
+        }
       }
 
 
