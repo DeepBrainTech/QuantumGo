@@ -63,7 +63,7 @@
       <div class="battle">
         <div class="board-box">
           <board-component class="board" info="board1" :can="!stoneRemovalPhase && !game.reviewMode" :callback="onBoardClick"
-            :show-score-estimate="showScoreEstimate && !stoneRemovalPhase"
+            :show-score-estimate="showScoreEstimate"
             :score-estimate-data="scoreEstimateData1"
             :stone-removal-mode="stoneRemovalPhase"
             :removal-set="removalSet1"
@@ -71,7 +71,7 @@
         </div>
         <div class="board-box">
           <board-component class="board" info="board2" :can="!stoneRemovalPhase && !game.reviewMode" :callback="onBoardClick"
-            :show-score-estimate="showScoreEstimate && !stoneRemovalPhase"
+            :show-score-estimate="showScoreEstimate"
             :score-estimate-data="scoreEstimateData2"
             :stone-removal-mode="stoneRemovalPhase"
             :removal-set="removalSet2"
