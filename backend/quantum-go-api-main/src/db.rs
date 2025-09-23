@@ -6,7 +6,7 @@ use uuid::Uuid;
 use sqlx::Row;
 
 
-const MAX_CONNECTIONS: u32 = 5;
+const MAX_CONNECTIONS: u32 = 50;
 
 /// Database connection and operations handler
 #[derive(Debug)]
@@ -58,7 +58,8 @@ impl Database {
                 white_lost INTEGER NOT NULL DEFAULT 0,
                 model INTEGER NOT NULL DEFAULT 9,
                 chessman_records JSONB NOT NULL DEFAULT '[]'::jsonb,
-                phase VARCHAR(50) DEFAULT 'BlackQuantum'
+                phase VARCHAR(50) DEFAULT 'BlackQuantum',
+                komi DOUBLE PRECISION NOT NULL DEFAULT 7.5
             );
             "#,
         )
@@ -78,6 +79,20 @@ impl Database {
                 .execute(pool)
                 .await?;
             println!("Phase column added successfully");
+        }
+
+        // Ensure komi column exists
+        let result_komi = sqlx::query(
+            "SELECT column_name FROM information_schema.columns WHERE table_name = 'room_infos' AND column_name = 'komi'"
+        )
+        .fetch_optional(pool)
+        .await?;
+        if result_komi.is_none() {
+            println!("Adding komi column to room_infos table...");
+            sqlx::query("ALTER TABLE room_infos ADD COLUMN komi DOUBLE PRECISION NOT NULL DEFAULT 7.5")
+                .execute(pool)
+                .await?;
+            println!("Komi column added successfully");
         }
 
         // Create user_rankings table
@@ -191,8 +206,8 @@ impl Database {
         sqlx::query_as::<_, RoomInfo>(
             r#"
             INSERT INTO room_infos (
-                room_id, owner_id, visitor_id, status, round, winner, board, countdown, moves, black_lost, white_lost, model, chessman_records, phase
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING *
+                room_id, owner_id, visitor_id, status, round, winner, board, countdown, moves, black_lost, white_lost, model, chessman_records, phase, komi
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING *
             "#,
         )
         .bind(room_info.room_id)
@@ -209,6 +224,7 @@ impl Database {
         .bind(room_info.model)
         .bind(&room_info.chessman_records)
         .bind(&room_info.phase)
+        .bind(room_info.komi as f64)
         .fetch_one(&self.pool)
         .await
     }
@@ -235,8 +251,9 @@ impl Database {
                 white_lost = $9,
                 model = $10,
                 chessman_records = $11,
-                phase = $12
-            WHERE id = $13 RETURNING *
+                phase = $12,
+                komi = $13
+            WHERE id = $14 RETURNING *
             "#,
         )
         .bind(room_info.visitor_id)       // $1
@@ -251,7 +268,8 @@ impl Database {
         .bind(room_info.model)            // $10
         .bind(&room_info.chessman_records)// $11
         .bind(&room_info.phase)           // $12
-        .bind(room_info.id)               // $13
+        .bind(room_info.komi as f64)     // $13
+        .bind(room_info.id)               // $14
         .fetch_one(&self.pool)
         .await
     }

@@ -1,4 +1,4 @@
-@mixin chess-white {
+﻿@mixin chess-white {
   background: radial-gradient(circle at 30% 30%, #fff, #ccc);
   box-shadow: inset -4px -4px 8px rgba(255, 255, 255, 0.8),
   inset 4px 4px 8px rgba(0, 0, 0, 0.2),
@@ -93,15 +93,17 @@
     }
 
     .chessman {
+      position: relative;
       display: flex;
       align-items: center;
       justify-content: center;
 
-      & > div {
+      & > div:not(.score-estimate-marker) {
         width: 74%;
         height: 74%;
         border-radius: 50%;
       }
+
 
       .quantum {
         position: relative;
@@ -109,6 +111,53 @@
         &.black {
           box-shadow: 0 0 12px 3px rgba(0, 0, 0, 0.8);
           opacity: 0.84;
+          /* 太极：左半黑色右半橘色 */
+          background: linear-gradient(90deg, #000000 50%, #ff6d2d 50%);
+          
+          &::before {
+            content: '';
+            position: absolute;
+            top: 25%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 50%;
+            height: 50%;
+            border-radius: 50%;
+            background: #000000;
+          }
+          
+          &::after {
+            content: '';
+            position: absolute;
+            top: 75%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 50%;
+            height: 50%;
+            border-radius: 50%;
+            background: #ff6d2d;
+          }
+          
+          .dot {
+            position: absolute;
+            width: 15%;
+            height: 15%;
+            border-radius: 50%;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+          }
+          .dot.top { 
+            top: 25%; 
+            transform: translate(-50%, -50%);
+            background: #ff6d2d; 
+          }
+          .dot.bottom { 
+            top: 75%; 
+            transform: translate(-50%, -50%);
+            background: #000000; 
+            border: 1px solid rgba(255, 255, 255, 0.5);
+          }
           //animation: black 8s infinite;
           //
           //@keyframes black {
@@ -127,6 +176,52 @@
         &.white {
           box-shadow: 0 0 10px 6px rgba(200, 200, 200, 0.96);
           opacity: 0.8;
+          /* 太极：左半白色右半橘色 */
+          background: linear-gradient(90deg, #ffffff 50%, #ff6d2d 50%);
+          
+          &::before {
+            content: '';
+            position: absolute;
+            top: 25%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 50%;
+            height: 50%;
+            border-radius: 50%;
+            background: #ffffff;
+          }
+          
+          &::after {
+            content: '';
+            position: absolute;
+            top: 75%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 50%;
+            height: 50%;
+            border-radius: 50%;
+            background: #ff6d2d;
+          }
+          
+          .dot {
+            position: absolute;
+            width: 15%;
+            height: 15%;
+            border-radius: 50%;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+          }
+          .dot.top { 
+            top: 25%; 
+            transform: translate(-50%, -50%);
+            background: #ff6d2d; 
+          }
+          .dot.bottom { 
+            top: 75%; 
+            transform: translate(-50%, -50%);
+            background: #ffffff; 
+          }
           //animation: white 8s infinite;
           //
           //@keyframes white {
@@ -155,6 +250,41 @@
 
       .white {
         @include chess-white;
+      }
+      .black.dead,
+      .white.dead {
+        filter: grayscale(100%) brightness(1.5);
+        transition: all 0.3s ease;
+        position: relative;
+      }
+
+      .black.dead {
+        .dead-marker {
+          z-index: 5;
+          background: rgba(255, 255, 255, 0.95);
+          border: 2px solid rgba(0, 0, 0, 0.55);
+        }
+      }
+
+      .white.dead {
+        .dead-marker {
+          z-index: 5;
+          background: rgba(0, 0, 0, 0.92);
+          border: 2px solid rgba(255, 255, 255, 0.65);
+        }
+      }
+
+      .dead-marker {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 42%;
+        height: 42%;
+        transform: translate(-50%, -50%);
+        border-radius: 6px;
+        box-shadow: 0 0 6px rgba(0, 0, 0, 0.45);
+        pointer-events: none;
+        z-index: 6;
       }
 
       .black.last,
@@ -189,3 +319,93 @@
     }
   }
 }
+
+.score-estimate-marker {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 3;
+
+  .territory-marker {
+    width: 34%;
+    height: 34%;
+    min-width: 8px;
+    min-height: 8px;
+    border-radius: 3px;
+    opacity: 0.9;
+    animation: territoryPulse 1.8s ease-in-out infinite;
+    border: 1px solid;
+    transform: scale(1);
+    transform-origin: center;
+
+    &.black-territory {
+      background: rgba(0, 0, 0, 0.9);
+      border-color: rgba(0, 0, 0, 1);
+      box-shadow: 0 0 12px rgba(0, 0, 0, 0.8);
+    }
+
+    &.white-territory {
+      background: rgba(255, 255, 255, 0.95);
+      border-color: rgba(0, 0, 0, 0.8);
+      box-shadow: 0 0 12px rgba(255, 255, 255, 0.8);
+    }
+  }
+}
+
+/* 用红色 X 显示死子（不叠加棋子），更显眼 */
+.dead-x {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 70%;
+  height: 70%;
+  transform: translate(-50%, -50%);
+  z-index: 6;
+  pointer-events: none; // 不阻挡点击事件，点击仍由父容器处理
+}
+.dead-x::before,
+.dead-x::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 4px; /* 线条粗细 */
+  height: 100%;
+  background: #FF3B30; /* iOS style 红色 */
+  border-radius: 2px;
+  transform-origin: center;
+  box-shadow: 0 0 6px rgba(255, 59, 48, 0.5);
+}
+.dead-x::before { transform: translate(-50%, -50%) rotate(45deg); }
+.dead-x::after  { transform: translate(-50%, -50%) rotate(-45deg); }
+
+@keyframes territoryPulse {
+  0% {
+    opacity: 0.75;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.12);
+  }
+  100% {
+    opacity: 0.75;
+    transform: scale(1);
+  }
+}
+
+
+
+
+
+
+
+
+
+
+

@@ -1,9 +1,9 @@
 <template>
   <div class="main">
     <div v-if="game.status === 'playing'" class="operation">
-      <div class="item btn" @click="passChess">{{ lang.text.room.pass }}</div>
-      <div class="item btn" @click="backChess">{{ lang.text.room.takeback }}</div>
-      <div class="item btn" @click="resign">{{ lang.text.room.resign }}</div>
+      <div class="item btn" :class="{ disabled: stoneRemovalPhase }" @click="!stoneRemovalPhase && passChess()">{{ lang.text.room.pass }}</div>
+      <div class="item btn" :class="{ disabled: stoneRemovalPhase }" @click="!stoneRemovalPhase && backChess()">{{ lang.text.room.takeback }}</div>
+      <div class="item btn" :class="{ disabled: stoneRemovalPhase }" @click="!stoneRemovalPhase && resign()">{{ lang.text.room.resign }}</div>
       <div class="item score">
         <div>
           <span class="label">{{ lang.text.room.moves }}</span>
@@ -20,22 +20,99 @@
           <span class="value white animate-count">{{ game.whitePoints }}</span>
         </div>
       </div>
+      <div class="item btn score-estimator-btn" @click="estimateScore" :disabled="estimatingScore">
+        {{ estimatingScore ? lang.text.room.estimating : (showScoreEstimate ? lang.text.room.hide_estimate : lang.text.room.score_estimator) }}
+      </div>
+      <div class="item btn end-game-btn" @click="endGameNow">{{ lang.text.room.end_game }}</div>
     </div>
     <div class="body">
+      <div v-if="stoneRemovalPhase" class="stone-removal-bar">
+        <div class="title">{{ lang.text.room.stone_removal_title }}</div>
+        <div class="summary">{{ lang.text.room.board1 }}: {{ board1LeadText }} · {{ lang.text.room.board2 }}: {{ board2LeadText }}</div>
+        <div class="actions">
+          <button class="sr-btn continue" @click="continueGame">{{ lang.text.room.continue_game }}</button>
+          <button class="sr-btn" @click="autoScoreRemoval" :disabled="estimatingScore">{{ lang.text.room.auto_score }}</button>
+          <button class="sr-btn" @click="clearRemoval">{{ lang.text.room.clear }}</button>
+          <button class="sr-btn primary" @click="acceptRemoval" :disabled="myRemovalAccepted">{{ myRemovalAccepted ? lang.text.room.accept_confirmed : lang.text.room.accept }}</button>
+          <span class="status ok">{{ lang.text.room.opponent_accepted }}</span>
+        </div>
+      </div>
+      <div v-if="showScoreEstimate && scoreEstimateData1 && scoreEstimateData2" class="score-estimate-summary">
+        <table class="estimate-table">
+          <thead>
+            <tr>
+              <th></th>
+            <th>{{ lang.text.room.winrate }}</th>
+            <th>{{ lang.text.room.score_lead }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th>{{ lang.text.room.board1 }}</th>
+              <td>{{ (scoreEstimateData1.winrate * 100).toFixed(1) }}%</td>
+              <td>{{ formatScoreLead(scoreEstimateData1.score_lead) }}</td>
+            </tr>
+            <tr>
+              <th>{{ lang.text.room.board2 }}</th>
+              <td>{{ (scoreEstimateData2.winrate * 100).toFixed(1) }}%</td>
+              <td>{{ formatScoreLead(scoreEstimateData2.score_lead) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
       <div class="battle">
         <div class="board-box">
-          <board-component class="board" info="board1" :can="true" :callback="onBoardClick" />
+          <board-component class="board" info="board1" :can="!stoneRemovalPhase && !game.reviewMode" :callback="onBoardClick"
+            :show-score-estimate="showScoreEstimate && !stoneRemovalPhase"
+            :score-estimate-data="scoreEstimateData1"
+            :stone-removal-mode="stoneRemovalPhase"
+            :removal-set="removalSet1"
+            @toggleRemoval="onToggleRemoval" />
         </div>
         <div class="board-box">
-          <board-component class="board" info="board2" :can="true" :callback="onBoardClick" />
+          <board-component class="board" info="board2" :can="!stoneRemovalPhase && !game.reviewMode" :callback="onBoardClick"
+            :show-score-estimate="showScoreEstimate && !stoneRemovalPhase"
+            :score-estimate-data="scoreEstimateData2"
+            :stone-removal-mode="stoneRemovalPhase"
+            :removal-set="removalSet2"
+            @toggleRemoval="onToggleRemoval" />
+        </div>
+      </div>
+      <!-- Review controls -->
+      <div class="review-bar" v-if="game.status === 'playing' && game.records">
+        <div class="left">
+          <button class="rv-btn" @click="gotoStart" :disabled="currentMove === 0">&laquo;&laquo;&laquo;</button>
+          <button class="rv-btn" @click="step(-10)" :disabled="currentMove === 0">&laquo;&laquo;</button>
+          <button class="rv-btn" @click="step(-1)" :disabled="currentMove === 0">&laquo;</button>
+        </div>
+        <div class="center">{{ displayMove }} / {{ totalMoves }}</div>
+        <div class="right">
+          <button class="rv-btn" @click="step(1)" :disabled="currentMove === totalMoves">&raquo;</button>
+          <button class="rv-btn" @click="step(10)" :disabled="currentMove === totalMoves">&raquo;&raquo;</button>
+          <button class="rv-btn" @click="gotoEnd" :disabled="currentMove === totalMoves">&raquo;&raquo;&raquo;</button>
+        </div>
+      </div>
+      <div class="countdown-slot">
+        <div class="countdown-inner" :class="{ visible: progress > 0 }">
+          <el-progress type="circle" striped striped-flow :percentage="progress" :color="progressColors" :format="progressLabel" />
         </div>
       </div>
       <div class="input-box">
         <input class="input" v-model="input" type="text" :placeholder="lang.text.room.chat_placeholder" @keyup.enter="sendMessage" />
       </div>
     </div>
-    <el-progress class="progress" v-show="progress > 0" type="circle" striped striped-flow :percentage="progress" :color="progressColors" :format="progressLabel" />
     <barrage-component ref="barrage" />
+    <!-- Finish dialog with SGF download -->
+    <el-dialog v-model="finishVisible" :title="lang.text.room.finish_title" width="520"
+               :close-on-click-modal="false" :close-on-press-escape="false">
+      <div style="margin-bottom: 12px;">{{ finishMessage }}</div>
+      <template #footer>
+        <div>
+          <el-button @click="downloadSGF">Download SGF</el-button>
+          <el-button type="primary" @click="finishVisible = false">OK</el-button>
+        </div>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -45,10 +122,12 @@ import BarrageComponent from "@/components/BarrageComponent/index.vue";
 import { useStore } from "vuex";
 import { computed, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { ElMessage, ElMessageBox, ElProgress, ElLoading } from "element-plus";
+import { ElMessage, ElMessageBox, ElProgress, ElLoading, ElDialog, ElButton } from "element-plus";
 import { Chessman, ChessmanType } from "@/utils/types";
 import api from "@/utils/api";
 import { canPutChess, canPutChessSituationalSuperko, hashBoardWithTurn } from "@/utils/chess";
+import { calculateGoResult } from "@/utils/chess2";
+import { exportQuantumSGF } from "@/utils/sgf";
 
 const route = useRoute();
 const router = useRouter();
@@ -60,6 +139,10 @@ const lang = computed(() => store.state.lang);
 
 const barrage = ref();
 const input = ref("");
+
+// Finish dialog with SGF download
+const finishVisible = ref(false);
+const finishMessage = ref('');
 
 // 进度条相关
 const progressColors = ref([
@@ -81,6 +164,30 @@ let timer: NodeJS.Timeout | undefined;
 const isAIThinking = ref(false);
 const playerPassed = ref(false);
 const aiPassed = ref(false);
+
+// Score Estimator & 点目
+const showScoreEstimate = ref(false);
+const estimatingScore = ref(false);
+const scoreEstimateData1 = ref<any>(null);
+const scoreEstimateData2 = ref<any>(null);
+const stoneRemovalPhase = ref(false);
+const removalSet1 = ref<Set<string>>(new Set());
+const removalSet2 = ref<Set<string>>(new Set());
+const myRemovalAccepted = ref(false); // AI 默认接受，只需玩家接受
+const formatScoreLead = (lead: number): string => {
+  if (lead > 0.0001) return `b+${lead.toFixed(1)}`;
+  if (lead < -0.0001) return `w+${Math.abs(lead).toFixed(1)}`;
+  return '0.0';
+};
+const computeBoardLeadText = (src: Map<string, any>, removed: Set<string>) => {
+  const m = new Map<string, { type: 'black' | 'white' }>();
+  src.forEach((c: any, pos: string) => { if (!removed.has(pos)) m.set(pos, { type: c.type }); });
+  const r = calculateGoResult(m as any, game.value.model, 0, 0);
+  const lead = r.blackScore - r.whiteScore;
+  return formatScoreLead(lead);
+};
+const board1LeadText = computed(() => computeBoardLeadText(game.value.board1, removalSet1.value));
+const board2LeadText = computed(() => computeBoardLeadText(game.value.board2, removalSet2.value));
 
 // 启动玩家回合倒计时
 const startPlayerTimer = () => {
@@ -458,6 +565,7 @@ const getAIMove = async (): Promise<{ kind: 'move' | 'pass' | 'resign', position
 
 // AI下棋
 const makeAIMove = async () => {
+  if (stoneRemovalPhase.value) { return; }
   if (game.value.status !== 'playing' || game.value.round) {
     return; // 不是AI的回合
   }
@@ -473,13 +581,9 @@ const makeAIMove = async () => {
     game.value.moves++;
     // 提示 AI pass，便于玩家选择跟着 pass 终局
     ElMessage.warning({ message: lang.value.text.room.ai_pass, grouping: true });
-    // 双方连续弃权 -> 终局
+    // 双方连续弃权 -> 进入点目（AI默认接受）
     if (playerPassed.value) {
-      store.commit('game/setStatus', 'finished');
-      store.commit('game/setRound', false);
-      const winnerName = game.value.blackPoints > game.value.whitePoints ? lang.value.text.room.side_black : lang.value.text.room.side_white;
-      const text = (lang.value.text.room.game_over_side_win as string).replace('{side}', winnerName);
-      ElMessageBox.alert(text, lang.value.text.room.finish_title, { confirmButtonText: 'OK' });
+      enterStoneRemoval();
       isAIThinking.value = false;
       return;
     }
@@ -540,15 +644,7 @@ const makeAIMove = async () => {
       // 落子失败，视为 pass
       aiPassed.value = true;
       ElMessage.warning({ message: lang.value.text.room.ai_pass, grouping: true });
-      if (playerPassed.value) {
-        store.commit('game/setStatus', 'finished');
-        store.commit('game/setRound', false);
-        const winnerName = game.value.blackPoints > game.value.whitePoints ? lang.value.text.room.side_black : lang.value.text.room.side_white;
-        const text = (lang.value.text.room.game_over_side_win as string).replace('{side}', winnerName);
-        ElMessageBox.alert(text, lang.value.text.room.finish_title, { confirmButtonText: 'OK' });
-        isAIThinking.value = false;
-        return;
-      }
+      if (playerPassed.value) { enterStoneRemoval(); isAIThinking.value = false; return; }
       store.commit('game/setRound', true);
       isAIThinking.value = false;
       return;
@@ -563,15 +659,7 @@ const makeAIMove = async () => {
     // 若仍失败，最终视为 pass
     aiPassed.value = true;
     ElMessage.warning({ message: lang.value.text.room.ai_pass, grouping: true });
-    if (playerPassed.value) {
-      store.commit('game/setStatus', 'finished');
-      store.commit('game/setRound', false);
-      const winnerName = game.value.blackPoints > game.value.whitePoints ? lang.value.text.room.side_black : lang.value.text.room.side_white;
-      const text = (lang.value.text.room.game_over_side_win as string).replace('{side}', winnerName);
-      ElMessageBox.alert(text, lang.value.text.room.finish_title, { confirmButtonText: 'OK' });
-      isAIThinking.value = false;
-      return;
-    }
+    if (playerPassed.value) { enterStoneRemoval(); isAIThinking.value = false; return; }
     store.commit('game/setRound', true);
     isAIThinking.value = false;
     return;
@@ -591,6 +679,7 @@ const makeAIMove = async () => {
 
 // 棋盘点击处理
 const onBoardClick = (position: string, board: string) => {
+  if (stoneRemovalPhase.value) { return; }
   // 只有在玩家回合且AI不在思考时才允许下棋
   if (!game.value.round || isAIThinking.value) {
     return;
@@ -602,6 +691,7 @@ const onBoardClick = (position: string, board: string) => {
 
 // 玩家下棋
 const putChess = async (position: string) => {
+  if (stoneRemovalPhase.value) { return; }
   // 玩家下棋，停止倒计时
   stopTimer();
   
@@ -646,6 +736,7 @@ const putChess = async (position: string) => {
 
 // 悔棋
 const backChess = async () => {
+  if (stoneRemovalPhase.value) { return; }
   if (!game.value.round) {
     ElMessage.warning({ message: lang.value.text.room.not_round, grouping: true });
     return;
@@ -661,6 +752,7 @@ const backChess = async () => {
 
 // 认输
 const resign = () => {
+  if (stoneRemovalPhase.value) { return; }
   ElMessageBox.confirm(lang.value.text.room.resign_confirm, lang.value.text.index.confirm, {
     confirmButtonText: lang.value.text.index.confirm,
     cancelButtonText: lang.value.text.index.cancel,
@@ -674,6 +766,7 @@ const resign = () => {
 
 // 弃权
 const passChess = () => {
+  if (stoneRemovalPhase.value) { return; }
   if (!game.value.round) {
     ElMessage.warning({ message: lang.value.text.room.not_round, grouping: true });
     return;
@@ -689,21 +782,107 @@ const passChess = () => {
   // 玩家弃权，轮到AI
   store.commit('game/setRound', false);
   game.value.moves++;
-  // 双方连续弃权 -> 终局
-  if (aiPassed.value) {
-    store.commit('game/setStatus', 'finished');
-    store.commit('game/setRound', false);
-    const winnerName = game.value.blackPoints > game.value.whitePoints ? lang.value.text.room.side_black : lang.value.text.room.side_white;
-    const text = (lang.value.text.room.game_over_side_win as string).replace('{side}', winnerName);
-    ElMessageBox.alert(text, lang.value.text.room.finish_title, { confirmButtonText: 'OK' });
-    return;
-  }
+  // 双方连续弃权 -> 进入点目（AI默认接受）
+  if (aiPassed.value) { enterStoneRemoval(); return; }
   playerPassed.value = true;
   
   // AI继续下棋
   setTimeout(() => {
     makeAIMove();
   }, 1000);
+};
+
+// ======== Score estimator + Stone removal helpers ========
+const estimateScore = async () => {
+  if (showScoreEstimate.value) {
+    showScoreEstimate.value = false; scoreEstimateData1.value = null; scoreEstimateData2.value = null; return;
+  }
+  if (estimatingScore.value) return;
+  try {
+    estimatingScore.value = true;
+    const collect = (b: Map<string, any>) => { const black: string[] = [], white: string[] = []; for (let i = 1; i <= game.value.model * game.value.model; i++) { const pos = `${((i - 1) % game.value.model) + 1},${Math.floor((i - 1) / game.value.model) + 1}`; const c = b.get(pos); if (!c) continue; (c.type === 'black' ? black : white).push(pos); } return { black, white }; };
+    const a1 = collect(game.value.board1); const a2 = collect(game.value.board2);
+    const resp = await api.scoreEstimate({ boards: [
+      { board_size: game.value.model, black_stones: a1.black, white_stones: a1.white, next_to_move: game.value.round ? 'black' : 'white' },
+      { board_size: game.value.model, black_stones: a2.black, white_stones: a2.white, next_to_move: game.value.round ? 'black' : 'white' }
+    ]});
+    const data = (resp as any).data || resp;
+    if (data.boards && data.boards.length >= 2) {
+      scoreEstimateData1.value = data.boards[0]; scoreEstimateData2.value = data.boards[1]; showScoreEstimate.value = true;
+    } else { ElMessage.error({ message: 'Score estimation failed', grouping: true }); }
+  } catch (e) { console.error(e); ElMessage.error({ message: 'Score estimation failed', grouping: true }); }
+  finally { estimatingScore.value = false; }
+};
+
+const enterStoneRemoval = async () => { stoneRemovalPhase.value = true; showScoreEstimate.value = false; myRemovalAccepted.value = false; await autoScoreRemoval(); };
+
+// 继续游戏（退出石子移除阶段）
+const continueGame = () => {
+  // 重置石子移除相关状态
+  stoneRemovalPhase.value = false;
+  removalSet1.value = new Set();
+  removalSet2.value = new Set();
+  myRemovalAccepted.value = false;
+  showScoreEstimate.value = false;
+  
+  // 重置pass状态，允许继续游戏
+  playerPassed.value = false;
+  aiPassed.value = false;
+  
+  // 重新启动游戏回合
+  store.commit("game/setRound", true);
+  
+  ElMessage.success(lang.value.text.room.continue_game_success);
+};
+const autoScoreRemoval = async () => {
+  try {
+    estimatingScore.value = true;
+    const collect = (b: Map<string, any>) => { const black: string[] = [], white: string[] = []; for (let i = 1; i <= game.value.model * game.value.model; i++) { const pos = `${((i - 1) % game.value.model) + 1},${Math.floor((i - 1) / game.value.model) + 1}`; const c = b.get(pos); if (!c) continue; (c.type === 'black' ? black : white).push(pos); } return { black, white }; };
+    const a1 = collect(game.value.board1); const a2 = collect(game.value.board2);
+    const resp = await api.scoreEstimate({ boards: [
+      { board_size: game.value.model, black_stones: a1.black, white_stones: a1.white, next_to_move: game.value.round ? 'black' : 'white' },
+      { board_size: game.value.model, black_stones: a2.black, white_stones: a2.white, next_to_move: game.value.round ? 'black' : 'white' }
+    ]});
+    const data = (resp as any).data || resp; const r1 = data.boards?.[0]; const r2 = data.boards?.[1];
+    if (r1 && r1.dead_stones) { const s = new Set<string>(); for (let i = 0; i < r1.dead_stones.length; i += 2) s.add(`${r1.dead_stones[i] + 1},${r1.dead_stones[i + 1] + 1}`); removalSet1.value = s; }
+    if (r2 && r2.dead_stones) { const s = new Set<string>(); for (let i = 0; i < r2.dead_stones.length; i += 2) s.add(`${r2.dead_stones[i] + 1},${r2.dead_stones[i + 1] + 1}`); removalSet2.value = s; }
+  } finally { estimatingScore.value = false; }
+};
+const clearRemoval = () => { removalSet1.value = new Set(); removalSet2.value = new Set(); myRemovalAccepted.value = false; };
+const onToggleRemoval = (pos: string, which: string) => { const set = which === 'board1' ? removalSet1.value : removalSet2.value; if (set.has(pos)) set.delete(pos); else set.add(pos); myRemovalAccepted.value = false; };
+const acceptRemoval = () => {
+  myRemovalAccepted.value = true; // AI默认接受
+  const cloneBoard = (src: Map<string, any>, removed: Set<string>) => { const m = new Map<string, any>(); src.forEach((v, k) => { if (!removed.has(k)) m.set(k, v); }); return m; };
+  const b1 = cloneBoard(game.value.board1, removalSet1.value); const b2 = cloneBoard(game.value.board2, removalSet2.value);
+  const r1 = calculateGoResult(b1 as any, game.value.model, 0, 0); const r2 = calculateGoResult(b2 as any, game.value.model, 0, 0);
+  const KOMI_ONCE = game.value.komi ?? 7.5; const blackTotal = r1.blackScore + r2.blackScore; const whiteTotal = r1.whiteScore + r2.whiteScore + KOMI_ONCE;
+  store.commit('game/setStatus', 'finished'); store.commit('game/setRound', false);
+  const winnerName = blackTotal > whiteTotal ? lang.value.text.room.side_black : lang.value.text.room.side_white;
+  finishMessage.value = (lang.value.text.room.game_over_side_win as string).replace('{side}', winnerName);
+  finishVisible.value = true;
+};
+
+const downloadSGF = () => {
+  try {
+    const sgf = exportQuantumSGF(game.value.records, game.value.model, game.value.komi ?? 7.5);
+    const blob = new Blob([sgf], { type: 'application/x-go-sgf;charset=utf-8' });
+    const a = document.createElement('a');
+    a.download = `quantumgo_ai_${Date.now()}.sgf`;
+    a.href = URL.createObjectURL(blob);
+    a.click();
+    URL.revokeObjectURL(a.href);
+  } catch (e) {
+    console.error('SGF export failed', e);
+    ElMessage.error({ message: 'SGF export failed', grouping: true });
+  }
+};
+
+// 一键终局：进入点目并自动标注死子，但不自动接受
+//（AI 默认已接受，玩家需手动点击 Accept 完成结算）
+const endGameNow = async () => {
+  stopTimer();
+  await enterStoneRemoval();
+  // 保留在点目阶段，等待玩家手动点击 Accept
 };
 
 // 发送消息
@@ -715,8 +894,41 @@ const sendMessage = async () => {
   input.value = "";
   barrage.value.sendBullet(message, 0);
 };
+
+// -------- Review helpers --------
+const totalMoves = computed(() => game.value.records?.length || 0);
+const currentMove = computed(() => game.value.reviewIndex || 0);
+const displayMove = computed(() => Math.min(currentMove.value, totalMoves.value));
+const gotoStart = () => store.dispatch('game/reviewGoto', 0);
+const gotoEnd = () => store.dispatch('game/reviewGoto', totalMoves.value);
+const step = (delta: number) => {
+  const target = Math.max(0, Math.min(currentMove.value + delta, totalMoves.value));
+  store.dispatch('game/reviewGoto', target);
+};
 </script>
 
 <style scoped lang="scss">
 @use "./index.scss" as *;
+
+/* Review bar */
+.review-bar {
+  margin: 10px 6vw;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #6E4C41;
+}
+.review-bar .center { font-weight: 700; min-width: 80px; text-align: center; }
+.review-bar .left, .review-bar .right { display: flex; gap: 8px; }
+.rv-btn {
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(0,0,0,0.1);
+  background: #fff;
+  cursor: pointer;
+}
+.rv-btn:disabled { opacity: 0.5; cursor: default; }
 </style>
+
+<!-- Finish dialog with SGF download -->
+ 

@@ -75,6 +75,16 @@ const actions = {
       localStorage.setItem("user_password", password);
     }
     return res;
+  },
+
+  async logout({ commit }: any) {
+    try {
+      localStorage.removeItem("userId");
+      localStorage.removeItem("user_name");
+      localStorage.removeItem("user_password");
+    } catch {}
+    commit("clearUserInfo");
+    ElMessage.success({ message: "Logged out", grouping: true });
   }
 };
 

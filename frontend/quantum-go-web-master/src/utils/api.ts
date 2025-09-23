@@ -26,8 +26,8 @@ class Api {
     }
   }
 
-  public async createRoom(user_id: string, model: number = 9, countdown: number = 30, gameMode: string = "pvp"): Promise<Response> {
-    const data = { user_id, countdown, model, game_mode: gameMode };
+  public async createRoom(user_id: string, model: number = 9, countdown: number = 30, gameMode: string = "pvp", komi: number = 7.5): Promise<Response> {
+    const data = { user_id, countdown, model, game_mode: gameMode, komi };
     return this.request("/createRoom", data);
   }
 
@@ -63,6 +63,18 @@ class Api {
     forbidden?: string[],
   }): Promise<Response> {
     return this.request("/ai/genmove", payload as any);
+  }
+
+  // Score estimation API
+  public async scoreEstimate(payload: {
+    boards: {
+      board_size: number,
+      black_stones: string[],
+      white_stones: string[],
+      next_to_move?: string
+    }[]
+  }): Promise<Response> {
+    return this.request("/ai/score_estimate", payload as any);
   }
 
 }

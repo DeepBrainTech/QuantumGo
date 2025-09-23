@@ -43,6 +43,9 @@
             <el-option label="180S" :value="180" />
           </el-select>
         </el-form-item>
+        <el-form-item label="Komi" :label-width="'140px'">
+          <el-input-number v-model="form.komi" :step="0.5" :min="0" :max="20" />
+        </el-form-item>
       </el-form>
       <template #footer>
         <div class="dialog-footer">
@@ -59,7 +62,7 @@ import BoardComponent from "@/components/BoardComponent/index.vue";
 import { useStore } from "vuex";
 import { computed, onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
-import { ElMessage, ElForm, ElFormItem, ElDialog, ElSelect, ElOption, ElButton } from "element-plus";
+import { ElMessage, ElForm, ElFormItem, ElDialog, ElSelect, ElOption, ElButton, ElInputNumber } from "element-plus";
 import handWithChess from '@/assets/img/hand_with_chess.png'
 import chessBox from '@/assets/img/chess_box.png'
 
@@ -76,7 +79,8 @@ const createRoomVisible = ref(false);
 const form = reactive({
   gameMode: "pvp",
   model: 9, // 默认19路棋盘
-  countdown: 30 // 默认30秒倒计时
+  countdown: 30, // 默认30秒倒计时
+  komi: 7.5
 });
 
 const createRoom = async () => {
@@ -84,12 +88,19 @@ const createRoom = async () => {
 };
 
 const createRoomSubmit = async () => {
-  const {gameMode, countdown, model} = form;
+  const {gameMode, countdown, model, komi} = form;
   if (!gameMode || countdown === undefined || countdown === null || !model) {
     ElMessage({ message: lang.value.text.index.create_room_error_empty_options, grouping: true, type: "error" });
     return;
   }
-  const roomId = await store.dispatch("game/createRoom", {gameMode, countdown, model});
+  // Require login for PvP rooms
+  // Require login for all modes (PVP and AI)
+  if (!user.value.isLogin) {
+    const fallback = (lang.value.active === 'cn') ? '请先登录' : 'Log in to continue.';
+    ElMessage({ message: (lang.value.text.login?.login_required ?? fallback), grouping: true, type: "warning" });
+    return;
+  }
+  const roomId = await store.dispatch("game/createRoom", {gameMode, countdown, model, komi});
   if (roomId === false) {
     ElMessage({ message: lang.value.text.index.create_room_error, grouping: true, type: "error" });
     return;
