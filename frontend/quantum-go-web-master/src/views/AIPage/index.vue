@@ -678,7 +678,7 @@ const getAIMove = async (): Promise<{ kind: 'move' | 'pass' | 'resign', position
       next_to_move,
       board_a_moves,
       board_b_moves,
-      komi: 7.5,
+      komi: game.value.komi,
       rules: 'Chinese',
       forbidden: computeForbidden(),
     });

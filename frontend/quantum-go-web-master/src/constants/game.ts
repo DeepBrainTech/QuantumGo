@@ -32,7 +32,7 @@ export const KOMI_RULES = {
 } as const;
 
 // 默认贴目
-export const DEFAULT_KOMI = 7;
+export const DEFAULT_KOMI = 7.5;
 
 // 量子相位
 export const QUANTUM_PHASES = {
