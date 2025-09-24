@@ -2,7 +2,17 @@ use crate::entity::{RoomInfo, User, LeaderboardEntry};
 use axum::{Json, extract::State, http::StatusCode};
 use serde::Deserialize;
 use uuid::Uuid;
-use crate::katago::{AiGenmoveRequest, AiGenmoveResponse, genmove_with_katago, ScoreEstimateRequest, ScoreEstimateResponse, estimate_with_score_estimator};
+use crate::katago::{
+    AiGenmoveRequest,
+    AiGenmoveResponse,
+    AiDualGenmoveRequest,
+    AiDualGenmoveResponse,
+    genmove_with_katago,
+    genmove_dual_with_katago,
+    ScoreEstimateRequest,
+    ScoreEstimateResponse,
+    estimate_with_score_estimator,
+};
 
 type ApiResult<T> = Result<(StatusCode, Json<T>), (StatusCode, Json<serde_json::Value>)>;
 
@@ -180,6 +190,20 @@ pub async fn score_estimate(
         Err(err) => Err((
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({ "error": format!("score estimate error: {}", err) })),
+        )),
+    }
+}
+
+#[axum::debug_handler]
+pub async fn ai_genmove_dual(
+    _state: State<crate::ws::AppState>,
+    Json(req): Json<AiDualGenmoveRequest>,
+) -> ApiResult<AiDualGenmoveResponse> {
+    match genmove_dual_with_katago(req).await {
+        Ok(resp) => Ok((StatusCode::OK, Json(resp))),
+        Err(err) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": format!("katago dual-genmove error: {}", err) })),
         )),
     }
 }

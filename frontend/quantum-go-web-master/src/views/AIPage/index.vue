@@ -644,15 +644,40 @@ const computeForbidden = (): string[] => {
 };
 
 // 调用后端 KataGo 获取 AI 一手；失败时回退到本地 MCTS
+// Build both board histories for dual-board analysis
+const buildDualHistories = (): {
+  a: { color: 'black' | 'white', position: string }[],
+  b: { color: 'black' | 'white', position: string }[],
+} => {
+  const a: { color: 'black' | 'white', position: string }[] = [];
+  const b: { color: 'black' | 'white', position: string }[] = [];
+  const opposite = (t: 'black' | 'white'): 'black' | 'white' => (t === 'black' ? 'white' : 'black');
+  for (let i = 0; i < game.value.records.length; i++) {
+    const rec = game.value.records[i];
+    if (!rec.add || rec.add.length === 0) continue;
+    const m = rec.add[0];
+    if (!m || !m.position || !m.type) continue;
+    const colorA = m.type as 'black' | 'white';
+    const posA = m.position as string;
+    const posB = (m.brother as string) || posA;
+    // Quantum: first two moves invert colours between realities; afterwards same colours
+    const colorB = (i <= 1) ? opposite(colorA) : colorA;
+    a.push({ color: colorA, position: posA });
+    b.push({ color: colorB, position: posB });
+  }
+  return { a, b };
+};
+
 const getAIMove = async (): Promise<{ kind: 'move' | 'pass' | 'resign', position?: string } | null> => {
   const boardSize = game.value.model;
   const next_to_move: 'black' | 'white' = 'white'; // 本页玩家=黑，AI=白
-  const moves = buildClassicHistory();
+  const { a: board_a_moves, b: board_b_moves } = buildDualHistories();
   try {
-    const res = await api.aiGenmove({
+    const res = await api.aiGenmoveDual({
       board_size: boardSize,
       next_to_move,
-      moves,
+      board_a_moves,
+      board_b_moves,
       komi: 7.5,
       rules: 'Chinese',
       forbidden: computeForbidden(),

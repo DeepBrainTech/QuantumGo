@@ -65,6 +65,20 @@ class Api {
     return this.request("/ai/genmove", payload as any);
   }
 
+  // Dual-board genmove: analyze board A for candidates, evaluate on board B, choose best
+  public async aiGenmoveDual(payload: {
+    board_size: number,
+    next_to_move: 'black' | 'white',
+    board_a_moves: { color: 'black' | 'white', position: string }[],
+    board_b_moves: { color: 'black' | 'white', position: string }[],
+    komi?: number,
+    rules?: string,
+    forbidden?: string[],
+    k?: number,
+  }): Promise<Response> {
+    return this.request("/ai/genmove_dual", payload as any);
+  }
+
   // Score estimation API
   public async scoreEstimate(payload: {
     boards: {

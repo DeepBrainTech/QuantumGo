@@ -71,6 +71,7 @@ async fn main() {
         .route("/getUserInfo", post(api::login))
         .route("/getLeaderboard", post(api::get_leaderboard))
         .route("/ai/genmove", post(api::ai_genmove))
+        .route("/ai/genmove_dual", post(api::ai_genmove_dual))
         .route("/ai/score_estimate", post(api::score_estimate))
         .route("/ws/{user_id}/{room_id}", any(ws::ws_handler))
         .with_state(state)
