@@ -995,7 +995,7 @@ const showScoreDetail = () => {
 
 .stone-removal-bar {
   margin: 0 6vw 1rem 6vw;
-  padding: 10px 14px;
+  padding: 12px 16px;
   background: rgba(235, 137, 79, 0.12);
   border: 1px solid rgba(235, 137, 79, 0.25);
   border-radius: 12px;
@@ -1004,6 +1004,7 @@ const showScoreDetail = () => {
   justify-content: space-between;
   box-shadow: 0 4px 12px rgba(0,0,0,0.05);
   color: #6E4C41;
+  font-size: 16px;
 }
 
 .stone-removal-bar .title {
@@ -1018,15 +1019,16 @@ const showScoreDetail = () => {
 
 .stone-removal-bar .actions { display: flex; gap: 10px; align-items: center; }
 .sr-btn {
-  padding: 8px 12px;
+  padding: 10px 14px;
   border-radius: 10px;
   border: 1px solid rgba(0,0,0,0.08);
   background: #fff;
   cursor: pointer;
+  font-size: 15px;
 }
 .sr-btn.primary { background: #EB894F; color: #fff; border-color: #EB894F; }
 .status { margin-left: 8px; opacity: 0.85; }
-.status.ok { color: #2e7d32; font-weight: 600; }
+.status.ok { color: #2e7d32; font-weight: 600; font-size: 15px; }
 
 /* Review bar */
 .review-bar {

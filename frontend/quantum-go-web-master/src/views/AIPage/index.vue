@@ -943,6 +943,10 @@ const continueGame = () => {
   myRemovalAccepted.value = false;
   showScoreEstimate.value = false;
   
+  // 清空分数估算数据，避免死子标记残留
+  scoreEstimateData1.value = null;
+  scoreEstimateData2.value = null;
+  
   // 重置pass状态，允许继续游戏
   playerPassed.value = false;
   aiPassed.value = false;
