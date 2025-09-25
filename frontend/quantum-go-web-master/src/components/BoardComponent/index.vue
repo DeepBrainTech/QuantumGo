@@ -83,25 +83,16 @@ const game = computed(() => store.state.game);
 const emit = defineEmits(["toggleRemoval"]);
 
 const lastChess = computed(() => {
+  // Show only the most recent move overall, not separate by color
   const result = { black: "", white: "" };
   const upto = game.value.reviewIndex && game.value.reviewIndex > 0 ? game.value.reviewIndex : game.value.records.length;
-  const recs = game.value.records.slice(0, upto);
-  const lastWhite = recs.filter((item: ChessmanRecord) => item.add[0].type === "white").pop();
-  if (lastWhite) {
-    if (props.info === "board1") {
-      result.white = lastWhite.add[0].position;
-    } else {
-      result.white = lastWhite.add[0].brother;
-    }
-  }
-  const lastBlack = recs.filter((item: ChessmanRecord) => item.add[0].type === "black").pop();
-  if (lastBlack) {
-    if (props.info === "board1") {
-      result.black = lastBlack.add[0].position;
-    } else {
-      result.black = lastBlack.add[0].brother;
-    }
-  }
+  if (upto === 0) return result;
+  const last = game.value.records[upto - 1] as ChessmanRecord | undefined;
+  if (!last) return result;
+  const isBoard1 = props.info === "board1";
+  const lastPos = isBoard1 ? last.add[0].position : last.add[0].brother;
+  result.black = lastPos;
+  result.white = lastPos;
   return result;
 });
 
@@ -192,13 +183,13 @@ const generateBoard = () => {
   };
 };
 onMounted(() => {
-  // å»¶è¿Ÿç”Ÿæˆæ£‹ç›˜ï¼Œç¡®ä¿canvaså…ƒç´ å·²ç»æ¸²æŸ“
+
   setTimeout(() => {
     generateBoard();
   }, 50);
 });
 watch(() => game.value.model, () => {
-  // å»¶è¿Ÿç”Ÿæˆæ£‹ç›˜ï¼Œç¡®ä¿canvaså…ƒç´ å·²ç»æ¸²æŸ“
+  
   setTimeout(() => {
     generateBoard();
   }, 50);
@@ -224,14 +215,13 @@ const putChess = async (index: number) => {
     return;
   }
   
-  // æ£€æŸ¥æ˜¯å¦æ˜¯AIæ¨¡å¼
+  // 
   if (game.value.gameMode === 'ai') {
-    // AIæ¨¡å¼ç›´æŽ¥è°ƒç”¨å›žè°ƒï¼Œä¸è°ƒç”¨storeçš„putChess
     props.callback(position, props.info);
     return;
   }
   
-  // PVPæ¨¡å¼ä½¿ç”¨storeçš„putChess
+  // 
   const type = game.value.camp;
   const result = await store.dispatch("game/putChess", { position, type });
   if (!result) {
@@ -261,7 +251,6 @@ const ownershipScale = computed(() => {
   return maxMagnitude;
 });
 
-// æ£€æŸ¥æ˜¯å¦ä¸ºæ­»å­
 // 优先使用后端死子列表；若缺失，则基于ownership保守判定
 const isDeadStone = (index: number): boolean => {
   const pos = getPositionStr(index);
@@ -325,21 +314,20 @@ const getOwnershipValue = (index: number): number => {
     return 0;
   }
   
-  // å°†æ£‹ç›˜ç´¢å¼•è½¬æ¢ä¸ºåæ ‡
-  // æ£‹ç›˜ç´¢å¼•ä»Ž1å¼€å§‹ï¼Œè½¬æ¢ä¸º1-basedåæ ‡
+
   const x = ((index - 1) % boardSize) + 1;
-  const y = Math.floor((index - 1) / boardSize) + 1; // åˆ— (1-based)
+  const y = Math.floor((index - 1) / boardSize) + 1; 
   
-  // è½¬æ¢ä¸º0-basedåæ ‡ï¼ŒåŒ¹é…åŽç«¯set_stone(x-1, y-1, color)çš„æ ¼å¼
+
   const x0 = x - 1; // è¡Œ (0-based)
   const y0 = y - 1; // åˆ— (0-based)
   
-  // è®¡ç®—æ‰€æœ‰æƒæ•°ç»„ç´¢å¼•ï¼Œä½¿ç”¨C++ score-estimatorçš„y * width + xæ ¼å¼
+
   const ownershipIndex = y0 * boardSize + x0;
   
   if (ownershipIndex >= 0 && ownershipIndex < ownership.length) {
     const value = ownership[ownershipIndex];
-    // score-estimatorçš„å€¼èŒƒå›´æ˜¯-1åˆ°1ï¼Œä¸éœ€è¦é¢å¤–å½’ä¸€åŒ–
+
     return value;
   }
   

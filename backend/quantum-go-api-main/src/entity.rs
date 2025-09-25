@@ -33,6 +33,8 @@ pub struct RoomInfo {
     pub chessman_records: serde_json::Value,
     pub phase: Option<String>,
     pub komi: f64,
+    // Govariants-style time control configuration (JSON), optional
+    pub time_control: Option<serde_json::Value>,
 }
 
 #[derive(Clone, Deserialize, Serialize, FromRow)]

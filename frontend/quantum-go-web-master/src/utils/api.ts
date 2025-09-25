@@ -26,8 +26,16 @@ class Api {
     }
   }
 
-  public async createRoom(user_id: string, model: number = 9, countdown: number = 30, gameMode: string = "pvp", komi: number = 7.5): Promise<Response> {
-    const data = { user_id, countdown, model, game_mode: gameMode, komi };
+  public async createRoom(
+    user_id: string,
+    model: number = 9,
+    gameMode: string = "pvp",
+    komi: number = 7.5,
+    time_control?: any,
+  ): Promise<Response> {
+    // countdown deprecated client-side; send 0 for compatibility
+    const data: any = { user_id, countdown: 0, model, game_mode: gameMode, komi };
+    if (time_control) data.time_control = time_control;
     return this.request("/createRoom", data);
   }
 

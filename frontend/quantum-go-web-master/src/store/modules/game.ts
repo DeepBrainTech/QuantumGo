@@ -7,7 +7,6 @@ const state = () => ({
   roomId: "" as string,
   status: "waiting" as "waiting" | "playing" | "finished",
   subStatus: "black" as "black" | "white" | "common",
-  countdown: 30 as number,
   moves: 0 as number,
   blackQuantum: "" as string,
   whiteQuantum: "" as string,
@@ -31,6 +30,8 @@ const state = () => ({
   phase: null as string | null,
   gameMode: "pvp" as "pvp" | "ai"
   ,
+  // Time control configuration (shared via backend)
+  timeControl: null as any | null,
   // Review mode state
   reviewMode: false as boolean,
   // Number of records applied on board for preview (0..records.length)
@@ -62,8 +63,9 @@ const mutations = {
     state.model = model;
   },
 
-  setCountdown(state: any, countdown: number) {
-    state.countdown = countdown;
+  // countdown removed in favor of timeControl
+  setTimeControl(state: any, cfg: any | null) {
+    state.timeControl = cfg;
   },
   setKomi(state: any, komi: number) {
     state.komi = komi;
@@ -147,7 +149,7 @@ const mutations = {
 
 const actions = {
   async setGameInfo({ commit, rootState, state }: any, data: Record<string, any>) {
-    const { room_id, status, owner_id, round, board, moves, white_lost, black_lost, countdown, model, chessman_records, phase, komi } = data;
+    const { room_id, status, owner_id, round, board, moves, white_lost, black_lost, model, chessman_records, phase, komi } = data;
     const boardMap = new Map(JSON.stringify(board) === "{}" ? [] : board);
     state.board1.clear();
     state.board2.clear();
@@ -156,9 +158,12 @@ const actions = {
     state.moves = moves;
     state.whiteLost = white_lost;
     state.blackLost = black_lost;
-    state.countdown = countdown;
+    // countdown is deprecated; ignore if present
     state.model = model;
     state.komi = komi ?? 7.5;
+    // pick up time control if backend provides it
+    // @ts-ignore
+    state.timeControl = (data as any).time_control ?? state.timeControl ?? null;
     state.records = chessman_records ?? [];
     state.phase = phase || null;
     if (status === "waiting" && data.visitor_id) {
@@ -217,23 +222,24 @@ const actions = {
     commit("initBoard");
   },
 
-  async createRoom({ commit, rootState }: any, data: { countdown: number, model: number, komi?: number, gameMode?: string }): Promise<false | string> {
+  async createRoom({ commit, rootState }: any, data: { model: number, komi?: number, gameMode?: string, timeControl?: any }): Promise<false | string> {
     const mode = data.gameMode || "pvp";
     commit("setGameMode", mode);
     
     if (mode === "ai") {
       // AI模式保存棋盘尺寸和倒计时
       commit("setModel", data.model);
-      commit("setCountdown", data.countdown);
       commit("setKomi", data.komi ?? 7.5);
+      commit("setTimeControl", data.timeControl ?? null);
       // AI模式不需要调用后端API，直接返回一个虚拟房间ID
       return "ai_" + Date.now();
     }
     
-    const res = await api.createRoom(rootState.user.id, data.model, data.countdown, mode, data.komi ?? 7.5);
+    const res = await api.createRoom(rootState.user.id, data.model, mode, data.komi ?? 7.5, data.timeControl ?? null);
     if (!res.success) {
       return false;
     }
+    commit("setTimeControl", data.timeControl ?? null);
     return res.data.room_id;
   },
 

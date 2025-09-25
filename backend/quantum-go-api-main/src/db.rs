@@ -59,7 +59,8 @@ impl Database {
                 model INTEGER NOT NULL DEFAULT 9,
                 chessman_records JSONB NOT NULL DEFAULT '[]'::jsonb,
                 phase VARCHAR(50) DEFAULT 'BlackQuantum',
-                komi DOUBLE PRECISION NOT NULL DEFAULT 7.5
+                komi DOUBLE PRECISION NOT NULL DEFAULT 7.5,
+                time_control JSONB
             );
             "#,
         )
@@ -93,6 +94,20 @@ impl Database {
                 .execute(pool)
                 .await?;
             println!("Komi column added successfully");
+        }
+
+        // Ensure time_control column exists
+        let result_time_control = sqlx::query(
+            "SELECT column_name FROM information_schema.columns WHERE table_name = 'room_infos' AND column_name = 'time_control'"
+        )
+        .fetch_optional(pool)
+        .await?;
+        if result_time_control.is_none() {
+            println!("Adding time_control column to room_infos table...");
+            sqlx::query("ALTER TABLE room_infos ADD COLUMN time_control JSONB")
+                .execute(pool)
+                .await?;
+            println!("time_control column added successfully");
         }
 
         // Create user_rankings table
@@ -206,8 +221,8 @@ impl Database {
         sqlx::query_as::<_, RoomInfo>(
             r#"
             INSERT INTO room_infos (
-                room_id, owner_id, visitor_id, status, round, winner, board, countdown, moves, black_lost, white_lost, model, chessman_records, phase, komi
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING *
+                room_id, owner_id, visitor_id, status, round, winner, board, countdown, moves, black_lost, white_lost, model, chessman_records, phase, komi, time_control
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING *
             "#,
         )
         .bind(room_info.room_id)
@@ -225,6 +240,7 @@ impl Database {
         .bind(&room_info.chessman_records)
         .bind(&room_info.phase)
         .bind(room_info.komi as f64)
+        .bind(&room_info.time_control)
         .fetch_one(&self.pool)
         .await
     }
@@ -252,8 +268,9 @@ impl Database {
                 model = $10,
                 chessman_records = $11,
                 phase = $12,
-                komi = $13
-            WHERE id = $14 RETURNING *
+                komi = $13,
+                time_control = $14
+            WHERE id = $15 RETURNING *
             "#,
         )
         .bind(room_info.visitor_id)       // $1
@@ -268,8 +285,9 @@ impl Database {
         .bind(room_info.model)            // $10
         .bind(&room_info.chessman_records)// $11
         .bind(&room_info.phase)           // $12
-        .bind(room_info.komi as f64)     // $13
-        .bind(room_info.id)               // $14
+        .bind(room_info.komi as f64)      // $13
+        .bind(&room_info.time_control)    // $14
+        .bind(room_info.id)               // $15
         .fetch_one(&self.pool)
         .await
     }

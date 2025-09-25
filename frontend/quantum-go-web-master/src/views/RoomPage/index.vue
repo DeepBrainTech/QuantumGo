@@ -28,7 +28,7 @@
     <div class="body">
       <div v-if="stoneRemovalPhase" class="stone-removal-bar">
         <div class="title">{{ lang.text.room.stone_removal_title }}</div>
-        <div class="summary">{{ lang.text.room.board1 }}: {{ board1LeadText }} · {{ lang.text.room.board2 }}: {{ board2LeadText }}</div>
+        <div class="summary">{{ lang.text.room.board1 }}: {{ board1LeadText }} | {{ lang.text.room.board2 }}: {{ board2LeadText }}</div>
         <div class="actions">
           <button class="sr-btn continue" @click="continueGame">{{ lang.text.room.continue_game }}</button>
           <button class="sr-btn" @click="autoScoreRemoval" :disabled="estimatingScore">{{ lang.text.room.auto_score }}</button>
@@ -84,20 +84,28 @@
       <div class="review-bar" v-if="(game.status === 'playing' || game.status === 'waiting') && game.records">
         <div class="left">
           <button class="rv-btn" @click="gotoStart" :disabled="currentMove === 0">&laquo;&laquo;&laquo;</button>
-          <button class="rv-btn" @click="step(-10)" :disabled="currentMove === 0">&laquo;&laquo;</button>
+          <button class="rv-btn" @click="step(-5)" :disabled="currentMove === 0">&laquo;&laquo;</button>
           <button class="rv-btn" @click="step(-1)" :disabled="currentMove === 0">&laquo;</button>
         </div>
         <div class="center">{{ displayMove }} / {{ totalMoves }}</div>
         <div class="right">
           <button class="rv-btn" @click="step(1)" :disabled="currentMove === totalMoves">&raquo;</button>
-          <button class="rv-btn" @click="step(10)" :disabled="currentMove === totalMoves">&raquo;&raquo;</button>
+          <button class="rv-btn" @click="step(5)" :disabled="currentMove === totalMoves">&raquo;&raquo;</button>
           <button class="rv-btn" @click="gotoEnd" :disabled="currentMove === totalMoves">&raquo;&raquo;&raquo;</button>
         </div>
       </div>
 
+      <!-- Govariants-style dual clocks (styled with existing UI circle) -->
       <div class="countdown-slot">
-        <div class="countdown-inner" :class="{ visible: progress > 0 }">
-          <el-progress type="circle" striped striped-flow :percentage="progress" :color="progressColors" :format="progressLabel" />
+        <div class="countdown-inner" :class="{ visible: true }" style="display:flex; gap: 24px; align-items:center;">
+          <div style="display:flex; flex-direction:column; align-items:center;">
+            <el-progress type="circle" striped striped-flow :percentage="progressBlack" :color="progressColors" :format="() => blackClock" />
+            <div style="margin-top:6px; font-weight:600; color:#333;">{{ lang.text.room.side_black }}</div>
+          </div>
+          <div style="display:flex; flex-direction:column; align-items:center;">
+            <el-progress type="circle" striped striped-flow :percentage="progressWhite" :color="progressColors" :format="() => whiteClock" />
+            <div style="margin-top:6px; font-weight:600; color:#333;">{{ lang.text.room.side_white }}</div>
+          </div>
         </div>
       </div>
       <div class="input-box">
@@ -150,7 +158,7 @@
                 <span>{{ lang.text.room.side_black }}</span>
               </td>
               <td>{{ scoreDetail.blackArea }}</td>
-              <td>—</td>
+              <td>&mdash;</td>
               <td>{{ scoreDetail.blackBoard1 }}</td>
               <td>{{ scoreDetail.blackBoard2 }}</td>
               <td>{{ scoreDetail.blackTotal }}</td>
@@ -183,7 +191,7 @@
 import BoardComponent from "@/components/BoardComponent/index.vue";
 import BarrageComponent from "@/components/BarrageComponent/index.vue";
 import { useStore } from "vuex";
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import api from "@/utils/api";
 import { ElMessage, ElMessageBox, ElProgress, ElLoading, ElDialog, ElButton } from "element-plus";
@@ -192,6 +200,7 @@ import { canPutChess } from "@/utils/chess";
 import { calculateGoResult } from "@/utils/chess2";
 import Config from "@/config";
 import { exportQuantumSGF } from "@/utils/sgf";
+import { initRuntime, startTurn, finishMove, currentMsUntilTimeout, displayString } from "@/utils/timeControl";
 
 const route = useRoute();
 const router = useRouter();
@@ -201,13 +210,60 @@ const user = computed(() => store.state.user);
 const game = computed(() => store.state.game);
 const lang = computed(() => store.state.lang);
 
-// AI模式检测 - 检查房间的phase字段
+// Time control runtime and UI bindings
+let timeRt = initRuntime((game.value?.timeControl ?? null) as any);
+const blackClock = ref('');
+const whiteClock = ref('');
+const progressBlack = ref(0);
+const progressWhite = ref(0);
+let clockTimer: any = null;
+
+function startClockLoop() {
+  clearInterval(clockTimer);
+  clockTimer = setInterval(() => {
+    try {
+      const now = Date.now();
+      blackClock.value = displayString(timeRt, 'black', now);
+      whiteClock.value = displayString(timeRt, 'white', now);
+      const msB = currentMsUntilTimeout(timeRt, 'black', now);
+      const msW = currentMsUntilTimeout(timeRt, 'white', now);
+      const cfg: any = timeRt.config;
+      if (cfg) {
+        if (timeRt.forPlayer.black.onThePlaySince != null && msB != null) {
+          let denom = 1;
+          if (cfg.type === 'byoyomi') denom = (timeRt.forPlayer.black.clockState as any).mainTimeRemainingMS > 0 ? cfg.mainTimeMS : cfg.periodTimeMS;
+          else if (cfg.type === 'canadian') denom = (timeRt.forPlayer.black.clockState as any).mainTimeRemainingMS > 0 ? cfg.mainTimeMS : cfg.periodTimeMS;
+          else denom = cfg.mainTimeMS || 1;
+          progressBlack.value = Math.max(0, Math.min(100, Math.floor((msB / Math.max(1, denom)) * 100)));
+        }
+        if (timeRt.forPlayer.white.onThePlaySince != null && msW != null) {
+          let denom = 1;
+          if (cfg.type === 'byoyomi') denom = (timeRt.forPlayer.white.clockState as any).mainTimeRemainingMS > 0 ? cfg.mainTimeMS : cfg.periodTimeMS;
+          else if (cfg.type === 'canadian') denom = (timeRt.forPlayer.white.clockState as any).mainTimeRemainingMS > 0 ? cfg.mainTimeMS : cfg.periodTimeMS;
+          else denom = cfg.mainTimeMS || 1;
+          progressWhite.value = Math.max(0, Math.min(100, Math.floor((msW / Math.max(1, denom)) * 100)));
+        }
+        if (msB !== null && msB <= 0) {
+          ws?.send(JSON.stringify({ type: 'setWinner', data: { winner: 'white' } }));
+          clearInterval(clockTimer);
+        } else if (msW !== null && msW <= 0) {
+          ws?.send(JSON.stringify({ type: 'setWinner', data: { winner: 'black' } }));
+          clearInterval(clockTimer);
+        }
+      }
+    } catch (e) {
+      // ignore clock UI errors
+    }
+  }, 100);
+}
+
+// AIæ¨¡å¼æ£€æµ‹ - æ£€æŸ¥æˆ¿é—´çš„phaseå­—æ®µ
 const isAIMode = computed(() => {
-  // 检查路由路径
+  // æ£€æŸ¥è·¯ç”±è·¯å¾„
   if (route.path.startsWith('/ai/')) {
     return true;
   }
-  // 检查房间数据中的phase字段
+  // æ£€æŸ¥æˆ¿é—´æ•°æ®ä¸­çš„phaseå­—æ®µ
   if (game.value && game.value.phase === 'ai') {
     return true;
   }
@@ -218,14 +274,14 @@ const barrage = ref();
 
 let ws: any;
 const wsStatus = ref(false);
-// 连续弃权检测（PVP）
+// è¿žç»­å¼ƒæƒæ£€æµ‹ï¼ˆPVPï¼‰
 const lastActionWasPass = ref(false);
 const lastPassPlayer = ref<string | null>(null);
 const estimatingScore = ref(false);
 const showScoreEstimate = ref(false);
 const scoreEstimateData1 = ref<any>(null);
 const scoreEstimateData2 = ref<any>(null);
-// 石子移除（终局点目）
+// çŸ³å­ç§»é™¤ï¼ˆç»ˆå±€ç‚¹ç›®ï¼‰
 const stoneRemovalPhase = ref(false);
 const removalSet1 = ref<Set<string>>(new Set());
 const removalSet2 = ref<Set<string>>(new Set());
@@ -283,12 +339,15 @@ onMounted(() => {
 
 const initGame = async (data: Record<string, any>) => {
   await store.dispatch("game/setGameInfo", data);
+  // re-init time runtime from backend-provided config, if any
+  timeRt = initRuntime((store.state.game.timeControl ?? null) as any);
+  startClockLoop();
   console.log("Game initialized with data:", data);
   console.log("Game status:", game.value.status);
   console.log("Game round:", game.value.round);
   console.log("Game camp:", game.value.camp);
   
-  // 建立WebSocket连接用于PVP模式
+  // å»ºç«‹WebSocketè¿žæŽ¥ç”¨äºŽPVPæ¨¡å¼
   ws = new WebSocket(`${Config.wsUrl}/${user.value.id}/${roomId}`);
   // ws = io(`ws://${window.location.hostname}/ws/${user.value.id}/${roomId}`);
   ws.onopen = () => {
@@ -310,18 +369,21 @@ const initGame = async (data: Record<string, any>) => {
     if (data.type === "updateChess") {
       game.value.moves++;
       const chessman = data.data.putChess as Chessman;
+      // update time runtime (finish mover, start opponent)
+      const now = Date.now();
+      finishMove(timeRt, chessman.type === 'black' ? 'black' : 'white', now);
       if (chessman.position !== "0,0") {
-        // 正常落子
+        // æ­£å¸¸è½å­
         lastActionWasPass.value = false;
         lastPassPlayer.value = null;
         store.dispatch("game/putChess", chessman);
       } else {
-        // 对方 PASS 逻辑
+        // å¯¹æ–¹ PASS é€»è¾‘
         const currentPlayer = chessman.type;
         if (lastActionWasPass.value && lastPassPlayer.value !== currentPlayer) {
-          // 双方连续 PASS -> 进入石子移除阶段
+          // åŒæ–¹è¿žç»­ PASS -> è¿›å…¥çŸ³å­ç§»é™¤é˜¶æ®µ
           enterStoneRemoval();
-          // 通知对方进入石子移除
+          // é€šçŸ¥å¯¹æ–¹è¿›å…¥çŸ³å­ç§»é™¤
           ws.send(JSON.stringify({ type: "stoneRemovalStart", data: {} }));
           return;
         }
@@ -330,9 +392,9 @@ const initGame = async (data: Record<string, any>) => {
         if (currentPlayer !== game.value.camp) {
           ElMessage.info({ message: lang.value.text.room.opponent_pass, grouping: true });
         }
-        // 切换到我方回合与倒计时
+        // åˆ‡æ¢åˆ°æˆ‘æ–¹å›žåˆä¸Žå€’è®¡æ—¶
       }
-      // 同步board2状态（如果存在）
+      // åŒæ­¥board2çŠ¶æ€ï¼ˆå¦‚æžœå­˜åœ¨ï¼‰
       if (data.data.board2) {
         game.value.board2.clear();
         data.data.board2.forEach(([position, chess]: [string, any]) => {
@@ -342,35 +404,21 @@ const initGame = async (data: Record<string, any>) => {
       // Keep review cursor at end when new moves arrive
       store.dispatch('game/reviewGoto', game.value.records.length);
       store.commit("game/setRound", true);
-      progress.value = 100;
-      // 只有当countdown大于0时才启动倒计时
-      if (game.value.countdown > 0) {
-        timer = setInterval(() => {
-          if (isWaitingBack.value === true) {
-            return;
-          }
-          const reduce = 0.1 / game.value.countdown * 100;
-          if (progress.value > reduce) {
-            progress.value -= 0.1 / game.value.countdown * 100;
-          } else {
-            progress.value = 0;
-            passChess();
-            ElMessage.warning(lang.value.text.room.time_up);
-            clearInterval(timer);
-          }
-        }, 100);
-      } else {
-        // 不限时模式，不显示进度条
-        progress.value = 0;
-      }
-      // 取消不可靠的“无合法着点”判赢逻辑，改用双 PASS 触发终局
+      // start next side
+      const nextSide = chessman.type === 'black' ? 'white' : 'black';
+      startTurn(timeRt, nextSide, now);
+
     } else if (data.type === "startGame") {
       game.value.status = "playing";
       ElMessage.success(lang.value.text.room.start_game);
+      // set initial side on clock
+      const now = Date.now();
+      const toMove = game.value.round ? 'black' : 'white';
+      startTurn(timeRt, toMove, now);
     } else if (data.type === "stoneRemovalStart") {
       enterStoneRemoval();
     } else if (data.type === "stoneRemovalExit") {
-      // 对方退出石子移除阶段
+      // å¯¹æ–¹é€€å‡ºçŸ³å­ç§»é™¤é˜¶æ®µ
       stoneRemovalPhase.value = false;
       removalSet1.value = new Set();
       removalSet2.value = new Set();
@@ -385,7 +433,7 @@ const initGame = async (data: Record<string, any>) => {
       applyRemoteRemoval(data.data);
     } else if (data.type === "stoneRemovalAccept") {
       oppRemovalAccepted.value = true;
-      // 若双方都已接受并集合一致，则终局
+      // è‹¥åŒæ–¹éƒ½å·²æŽ¥å—å¹¶é›†åˆä¸€è‡´ï¼Œåˆ™ç»ˆå±€
       tryFinishAfterAcceptance();
     } else if (data.type === "setWinner") {
       store.commit("game/setStatus", "finished");
@@ -415,8 +463,6 @@ const initGame = async (data: Record<string, any>) => {
 };
 
 const putChess = async (position: string) => {
-  clearInterval(timer);
-  progress.value = 0;
   game.value.moves++;
   
   if (!wsStatus.value) {
@@ -429,7 +475,7 @@ const putChess = async (position: string) => {
     data: {
       putChess: chessman,
       board: [...game.value.board1],
-      board2: [...game.value.board2], // 添加board2状态
+      board2: [...game.value.board2], // æ·»åŠ board2çŠ¶æ€
       black_lost: game.value.blackLost,
       white_lost: game.value.whiteLost,
       chessman_records: game.value.records
@@ -477,14 +523,11 @@ const passChess = () => {
   if (game.value.board1.size <= 2) {
     ElMessage.warning({ message: lang.value.text.room.pass_early, grouping: true });
     return;
-  }
-  clearInterval(timer);
-  progress.value = 0;
-  const chessman: Chessman = { position: "0,0", type: game.value.camp, brother: "0,0" };
-  // 连续两次 PASS：如果上一手是对方 PASS，我方再 PASS 直接终局
+  }  const chessman: Chessman = { position: "0,0", type: game.value.camp, brother: "0,0" };
+  // è¿žç»­ä¸¤æ¬¡ PASSï¼šå¦‚æžœä¸Šä¸€æ‰‹æ˜¯å¯¹æ–¹ PASSï¼Œæˆ‘æ–¹å† PASS ç›´æŽ¥ç»ˆå±€
   const currentPlayer = game.value.camp;
   if (lastActionWasPass.value && lastPassPlayer.value !== currentPlayer) {
-    // 连续 PASS -> 进入石子移除
+    // è¿žç»­ PASS -> è¿›å…¥çŸ³å­ç§»é™¤
     enterStoneRemoval();
     ws.send(JSON.stringify({ type: "stoneRemovalStart", data: {} }));
     return;
@@ -532,23 +575,15 @@ const progressColors = ref([
   { color: "#e6a23c", percentage: 60 },
   { color: "#5cb87a", percentage: 100 }
 ]);
-const progressLabel = (percentage: number) => {
-  if (game.value.countdown === 0) {
-    return "∞";
-  }
-  return `${Math.floor(percentage / 100 * game.value.countdown)}S`;
-};
 
-const progress = ref(0);
-let timer: NodeJS.Timeout;
 
-// Score Estimator功能
+// Score EstimatoråŠŸèƒ½
 const estimateScore = async () => {
   console.log('estimateScore called!');
   console.log('showScoreEstimate.value:', showScoreEstimate.value);
   console.log('estimatingScore.value:', estimatingScore.value);
   
-  // 如果已经在显示，则关闭显示
+  // å¦‚æžœå·²ç»åœ¨æ˜¾ç¤ºï¼Œåˆ™å…³é—­æ˜¾ç¤º
   if (showScoreEstimate.value) {
     console.log('Hiding estimate display');
     showScoreEstimate.value = false;
@@ -563,7 +598,7 @@ const estimateScore = async () => {
     console.log('Starting score estimation...');
     estimatingScore.value = true;
     
-    // 准备棋盘数据
+    // å‡†å¤‡æ£‹ç›˜æ•°æ®
     const board1 = game.value.board1 || new Map();
     const board2 = game.value.board2 || new Map();
     
@@ -571,7 +606,7 @@ const estimateScore = async () => {
     console.log('Board2 size:', board2.size);
     console.log('Game model:', game.value.model);
     
-    // 收集board1的棋子位置
+    // æ”¶é›†board1çš„æ£‹å­ä½ç½®
     const board1BlackStones: string[] = [];
     const board1WhiteStones: string[] = [];
     
@@ -587,7 +622,7 @@ const estimateScore = async () => {
       }
     }
     
-    // 收集board2的棋子位置
+    // æ”¶é›†board2çš„æ£‹å­ä½ç½®
     const board2BlackStones: string[] = [];
     const board2WhiteStones: string[] = [];
     
@@ -608,7 +643,7 @@ const estimateScore = async () => {
     console.log('Board2 - Black stones:', board2BlackStones);
     console.log('Board2 - White stones:', board2WhiteStones);
     
-    // 调用API，分析两个棋盘
+    // è°ƒç”¨APIï¼Œåˆ†æžä¸¤ä¸ªæ£‹ç›˜
     console.log('Calling API...');
     const response = await api.scoreEstimate({
       boards: [
@@ -629,19 +664,19 @@ const estimateScore = async () => {
     
     console.log('API response received:', response);
     
-    // 检查响应结构
+    // æ£€æŸ¥å“åº”ç»“æž„
     const responseData = (response as any).data || response;
     console.log('Response data:', responseData);
     
     if (responseData.boards && responseData.boards.length >= 2) {
-      // 处理board1的结果
+      // å¤„ç†board1çš„ç»“æžœ
       const result1 = responseData.boards[0];
       console.log('Board1 score estimate result:', result1);
       console.log('Board1 ownership array length:', result1.ownership ? result1.ownership.length : 'undefined');
       
       scoreEstimateData1.value = result1;
       
-      // 处理board2的结果
+      // å¤„ç†board2çš„ç»“æžœ
       const result2 = responseData.boards[1];
       console.log('Board2 score estimate result:', result2);
       console.log('Board2 ownership array length:', result2.ownership ? result2.ownership.length : 'undefined');
@@ -674,34 +709,34 @@ const estimateScore = async () => {
   }
 };
 
-// 辅助函数：将索引转换为位置字符串
+// è¾…åŠ©å‡½æ•°ï¼šå°†ç´¢å¼•è½¬æ¢ä¸ºä½ç½®å­—ç¬¦ä¸²
 const getPositionStr = (index: number): string => {
   const x = ((index - 1) % game.value.model) + 1;
   const y = Math.floor((index - 1) / game.value.model) + 1;
   return `${x},${y}`;
 };
 
-// 进入石子移除阶段
+// è¿›å…¥çŸ³å­ç§»é™¤é˜¶æ®µ
 const enterStoneRemoval = async () => {
   stoneRemovalPhase.value = true;
   myRemovalAccepted.value = false;
   oppRemovalAccepted.value = false;
-  // 初始使用一次自动点目作为参考
+  // åˆå§‹ä½¿ç”¨ä¸€æ¬¡è‡ªåŠ¨ç‚¹ç›®ä½œä¸ºå‚è€ƒ
   await autoScoreRemoval();
-  // 确保在石子移除阶段显示形势判断
+  // ç¡®ä¿åœ¨çŸ³å­ç§»é™¤é˜¶æ®µæ˜¾ç¤ºå½¢åŠ¿åˆ¤æ–­
   if (!showScoreEstimate.value) {
     await estimateScore();
   }
 };
 
-// 继续游戏（退出石子移除阶段）
+// ç»§ç»­æ¸¸æˆï¼ˆé€€å‡ºçŸ³å­ç§»é™¤é˜¶æ®µï¼‰
 const continueGame = () => {
   if (!wsStatus.value) {
     ElMessage.warning({ message: lang.value.text.room.ws_connection_error, grouping: true });
     return;
   }
   
-  // 重置石子移除相关状态
+  // é‡ç½®çŸ³å­ç§»é™¤ç›¸å…³çŠ¶æ€
   stoneRemovalPhase.value = false;
   removalSet1.value = new Set();
   removalSet2.value = new Set();
@@ -709,24 +744,24 @@ const continueGame = () => {
   oppRemovalAccepted.value = false;
   showScoreEstimate.value = false;
   
-  // 重置pass状态，允许继续游戏
+  // é‡ç½®passçŠ¶æ€ï¼Œå…è®¸ç»§ç»­æ¸¸æˆ
   lastActionWasPass.value = false;
   lastPassPlayer.value = null;
   
-  // 通知对方退出石子移除阶段
+  // é€šçŸ¥å¯¹æ–¹é€€å‡ºçŸ³å­ç§»é™¤é˜¶æ®µ
   ws.send(JSON.stringify({ type: "stoneRemovalExit", data: {} }));
   
-  // 重新启动游戏回合
+  // é‡æ–°å¯åŠ¨æ¸¸æˆå›žåˆ
   store.commit("game/setRound", true);
   
   ElMessage.success(lang.value.text.room.continue_game_success);
 };
 
-// 根据估算器自动标记死子
+// æ ¹æ®ä¼°ç®—å™¨è‡ªåŠ¨æ ‡è®°æ­»å­
 const autoScoreRemoval = async () => {
   try {
     estimatingScore.value = true;
-    // 复用现有API
+    // å¤ç”¨çŽ°æœ‰API
     const assemble = (board: Map<string, any>) => {
       const b: string[] = [], w: string[] = [];
       for (let i = 1; i <= game.value.model * game.value.model; i++) {
@@ -789,7 +824,7 @@ const onToggleRemoval = (pos: string, which: string) => {
 const applyRemoteRemoval = (payload: any) => {
   removalSet1.value = new Set<string>(payload.board1 || []);
   removalSet2.value = new Set<string>(payload.board2 || []);
-  myRemovalAccepted.value = false; // 远端更新撤销双方的接受
+  myRemovalAccepted.value = false; // è¿œç«¯æ›´æ–°æ’¤é”€åŒæ–¹çš„æŽ¥å—
   oppRemovalAccepted.value = false;
 };
 
@@ -807,7 +842,7 @@ const setsEqual = (a: Set<string>, b: Set<string>) => {
 
 const tryFinishAfterAcceptance = () => {
   if (!myRemovalAccepted.value || !oppRemovalAccepted.value) return;
-  // 双方都已接受，直接根据选择的死子计算结果
+  // åŒæ–¹éƒ½å·²æŽ¥å—ï¼Œç›´æŽ¥æ ¹æ®é€‰æ‹©çš„æ­»å­è®¡ç®—ç»“æžœ
   const cloneBoard = (src: Map<string, any>, removed: Set<string>) => {
     const m = new Map<string, any>();
     src.forEach((v, k) => { if (!removed.has(k)) m.set(k, v); });
@@ -824,9 +859,9 @@ const tryFinishAfterAcceptance = () => {
   ws.send(JSON.stringify({ type: 'setWinner', data: { winner } }));
 };
 
-// 点目阶段中部展示：当前两盘的 b+/w+ 领先信息（不含贴目）
+// ç‚¹ç›®é˜¶æ®µä¸­éƒ¨å±•ç¤ºï¼šå½“å‰ä¸¤ç›˜çš„ b+/w+ é¢†å…ˆä¿¡æ¯ï¼ˆä¸å«è´´ç›®ï¼‰
 const computeBoardLeadText = (src: Map<string, any>, removed: Set<string>) => {
-  // 构建“去除死子”的棋盘
+  // æž„å»ºâ€œåŽ»é™¤æ­»å­â€çš„æ£‹ç›˜
   const m = new Map<string, { type: 'black' | 'white' }>();
   src.forEach((c: any, pos: string) => {
     if (!removed.has(pos)) m.set(pos, { type: c.type });
@@ -850,7 +885,7 @@ const computeScoreLead = (board: Map<string, any>): string => {
 const board1ScoreLead = computed(() => computeScoreLead(game.value.board1));
 const board2ScoreLead = computed(() => computeScoreLead(game.value.board2));
 
-// 计算考虑死子移除的调整后分数
+// è®¡ç®—è€ƒè™‘æ­»å­ç§»é™¤çš„è°ƒæ•´åŽåˆ†æ•°
 const adjustedBlackScore = computed(() => {
   if (!stoneRemovalPhase.value) return game.value.blackPoints;
   
@@ -886,11 +921,11 @@ const adjustedWhiteScore = computed(() => {
   return Math.round((r1.whiteScore + r2.whiteScore + KOMI_ONCE) * 10) / 10;
 });
 
-// 将 score_lead 显示为 b+X / w+X 的通用格式（显示净领先分数）
+// å°† score_lead æ˜¾ç¤ºä¸º b+X / w+X çš„é€šç”¨æ ¼å¼ï¼ˆæ˜¾ç¤ºå‡€é¢†å…ˆåˆ†æ•°ï¼‰
 const formatScoreLead = (lead: number): string => {
-  if (lead > 0.0001) return `B+${lead.toFixed(1)}`; // 黑领先
-  if (lead < -0.0001) return `W+${Math.abs(lead).toFixed(1)}`; // 白领先
-  return '0.0'; // 平衡
+  if (lead > 0.0001) return `B+${lead.toFixed(1)}`; // é»‘é¢†å…ˆ
+  if (lead < -0.0001) return `W+${Math.abs(lead).toFixed(1)}`; // ç™½é¢†å…ˆ
+  return '0.0'; // å¹³è¡¡
 };
 
 // -------- Review helpers --------
@@ -904,6 +939,51 @@ const step = (delta: number) => {
   const target = Math.max(0, Math.min(currentMove.value + delta, totalMoves.value));
   store.dispatch('game/reviewGoto', target);
 };
+
+// -------- Keyboard controls --------
+const handleKeydown = (event: KeyboardEvent) => {
+  // åªåœ¨æ¸¸æˆè¿›è¡Œä¸­ä¸”æœ‰è®°å½•æ—¶å“åº”é”®ç›˜äº‹ä»¶
+  if ((game.value.status !== 'playing' && game.value.status !== 'waiting') || !game.value.records) return;
+  
+  // é˜²æ­¢åœ¨è¾“å…¥æ¡†ä¸­è§¦å‘
+  if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
+  
+  switch (event.key) {
+    case 'ArrowLeft':
+      event.preventDefault();
+      if (event.shiftKey) {
+        step(-5); // Shift + å·¦ç®­å¤´ï¼šåŽé€€5æ­¥
+      } else {
+        step(-1); // å·¦ç®­å¤´ï¼šåŽé€€1æ­¥
+      }
+      break;
+    case 'ArrowRight':
+      event.preventDefault();
+      if (event.shiftKey) {
+        step(5); // Shift + å³ç®­å¤´ï¼šå‰è¿›5æ­¥
+      } else {
+        step(1); // å³ç®­å¤´ï¼šå‰è¿›1æ­¥
+      }
+      break;
+    case 'Home':
+      event.preventDefault();
+      gotoStart(); // Homeé”®ï¼šè·³åˆ°å¼€å§‹
+      break;
+    case 'End':
+      event.preventDefault();
+      gotoEnd(); // Endé”®ï¼šè·³åˆ°ç»“æŸ
+      break;
+  }
+};
+
+// æ·»åŠ å’Œç§»é™¤é”®ç›˜äº‹ä»¶ç›‘å¬å™¨
+onMounted(() => {
+  document.addEventListener('keydown', handleKeydown);
+});
+
+onUnmounted(() => {
+  document.removeEventListener('keydown', handleKeydown);
+});
 
 const downloadSGF = () => {
   try {
@@ -1049,3 +1129,11 @@ const showScoreDetail = () => {
 }
 .rv-btn:disabled { opacity: 0.5; cursor: default; }
 </style>
+
+
+
+
+
+
+
+

@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="main">
     <div class="left">
       <div class="title">{{ lang.text.index.title }}</div>
@@ -31,21 +31,50 @@
             <el-option :label="lang.text.index.model_19" :value="19" />
           </el-select>
         </el-form-item>
-        <el-form-item :label="lang.text.index.countdown_title" :label-width="'140px'">
-          <el-select v-model="form.countdown" :placeholder="lang.text.index.countdown_placeholder">
-            <el-option :label="lang.text.index.countdown_unlimited" :value="0" />
-            <el-option label="15S" :value="15" />
-            <el-option label="30S" :value="30" />
-            <el-option label="60S" :value="60" />
-            <el-option label="90S" :value="90" />
-            <el-option label="120S" :value="120" />
-            <el-option label="150S" :value="150" />
-            <el-option label="180S" :value="180" />
-          </el-select>
-        </el-form-item>
+        
         <el-form-item label="Komi" :label-width="'140px'">
           <el-input-number v-model="form.komi" :step="0.5" :min="0" :max="20" />
         </el-form-item>
+        <!-- Time control selection -->
+        <el-form-item label="Time Control" :label-width="'140px'">
+          <el-select v-model="timeForm.timeType" placeholder="Select time control">
+            <el-option label="Unlimited" value="none" />
+            <el-option label="Absolute" value="absolute" />
+            <el-option label="Simple" value="simple" />
+            <el-option label="Fischer" value="fischer" />
+            <el-option label="Byo-Yomi" value="byoyomi" />
+            <el-option label="Canadian" value="canadian" />
+          </el-select>
+        </el-form-item>
+        <template v-if="timeForm.timeType !== 'none'">
+          <el-form-item label="Main Time (min)" :label-width="'140px'">
+            <el-input-number v-model="timeForm.mainTimeMin" :min="0" :max="300" />
+          </el-form-item>
+        </template>
+        <template v-if="timeForm.timeType === 'fischer'">
+          <el-form-item label="Increment (sec)" :label-width="'140px'">
+            <el-input-number v-model="timeForm.fischerIncrementSec" :min="0" :max="300" />
+          </el-form-item>
+          <el-form-item label="Max Cap (min, 0=none)" :label-width="'140px'">
+            <el-input-number v-model="timeForm.fischerMaxMin" :min="0" :max="600" />
+          </el-form-item>
+        </template>
+        <template v-if="timeForm.timeType === 'byoyomi'">
+          <el-form-item label="Period Time (sec)" :label-width="'140px'">
+            <el-input-number v-model="timeForm.periodTimeSec" :min="5" :max="300" />
+          </el-form-item>
+          <el-form-item label="Periods (count)" :label-width="'140px'">
+            <el-input-number v-model="timeForm.numPeriods" :min="1" :max="10" />
+          </el-form-item>
+        </template>
+        <template v-if="timeForm.timeType === 'canadian'">
+          <el-form-item label="Period Time (sec)" :label-width="'140px'">
+            <el-input-number v-model="timeForm.periodTimeSec" :min="5" :max="600" />
+          </el-form-item>
+          <el-form-item label="Stones / Period" :label-width="'140px'">
+            <el-input-number v-model="timeForm.numPeriods" :min="1" :max="50" />
+          </el-form-item>
+        </template>
       </el-form>
       <template #footer>
         <div class="dialog-footer">
@@ -78,8 +107,7 @@ onMounted(async () => {
 const createRoomVisible = ref(false);
 const form = reactive({
   gameMode: "pvp",
-  model: 9, // 默认19路棋盘
-  countdown: 30, // 默认30秒倒计时
+  model: 9, // é»˜è®¤19è·¯æ£‹ç›˜
   komi: 7.5
 });
 
@@ -87,26 +115,67 @@ const createRoom = async () => {
   createRoomVisible.value = true;
 };
 
+// Time control form state
+const timeForm = reactive({
+  timeType: 'none' as 'none'|'absolute'|'simple'|'fischer'|'byoyomi'|'canadian',
+  mainTimeMin: 5,
+  fischerIncrementSec: 5,
+  fischerMaxMin: 0,
+  periodTimeSec: 30,
+  numPeriods: 3,
+});
+
 const createRoomSubmit = async () => {
-  const {gameMode, countdown, model, komi} = form;
-  if (!gameMode || countdown === undefined || countdown === null || !model) {
+  const {gameMode, model, komi} = form;
+  if (!gameMode || !model) {
     ElMessage({ message: lang.value.text.index.create_room_error_empty_options, grouping: true, type: "error" });
     return;
   }
   // Require login for PvP rooms
   // Require login for all modes (PVP and AI)
   if (!user.value.isLogin) {
-    const fallback = (lang.value.active === 'cn') ? '请先登录' : 'Log in to continue.';
+    const fallback = (lang.value.active === 'cn') ? 'è¯·å…ˆç™»å½•' : 'Log in to continue.';
     ElMessage({ message: (lang.value.text.login?.login_required ?? fallback), grouping: true, type: "warning" });
     return;
   }
-  const roomId = await store.dispatch("game/createRoom", {gameMode, countdown, model, komi});
+  // Build time_control from timeForm and pass to backend
+  let timeControl: any | undefined = undefined;
+  if (timeForm.timeType !== 'none') {
+    const mainTimeMS = Math.max(0, Math.floor(timeForm.mainTimeMin * 60 * 1000));
+    if (timeForm.timeType === 'absolute') {
+      timeControl = { type: 'absolute', mainTimeMS };
+    } else if (timeForm.timeType === 'simple') {
+      timeControl = { type: 'simple', mainTimeMS };
+    } else if (timeForm.timeType === 'fischer') {
+      timeControl = {
+        type: 'fischer',
+        mainTimeMS,
+        incrementMS: Math.floor(Math.max(0, timeForm.fischerIncrementSec) * 1000),
+        maxTimeMS: timeForm.fischerMaxMin > 0 ? Math.floor(timeForm.fischerMaxMin * 60 * 1000) : null,
+      };
+    } else if (timeForm.timeType === 'byoyomi') {
+      timeControl = {
+        type: 'byoyomi',
+        mainTimeMS,
+        numPeriods: Math.max(1, Math.floor(timeForm.numPeriods)),
+        periodTimeMS: Math.floor(Math.max(1, timeForm.periodTimeSec) * 1000),
+      };
+    } else if (timeForm.timeType === 'canadian') {
+      timeControl = {
+        type: 'canadian',
+        mainTimeMS,
+        numPeriods: Math.max(1, Math.floor(timeForm.numPeriods)),
+        periodTimeMS: Math.floor(Math.max(1, timeForm.periodTimeSec) * 1000),
+      };
+    }
+  }
+  const roomId = await store.dispatch("game/createRoom", {gameMode, model, komi, timeControl});
   if (roomId === false) {
     ElMessage({ message: lang.value.text.index.create_room_error, grouping: true, type: "error" });
     return;
   }
   
-  // 根据游戏模式跳转到不同的路由
+  // æ ¹æ®æ¸¸æˆæ¨¡å¼è·³è½¬åˆ°ä¸åŒçš„è·¯ç”±
   if (gameMode === 'ai') {
     await router.push(`/ai/${roomId}`);
   } else {
@@ -118,3 +187,8 @@ const createRoomSubmit = async () => {
 <style scoped lang="scss">
 @use "./index.scss" as *;
 </style>
+
+
+
+
+
