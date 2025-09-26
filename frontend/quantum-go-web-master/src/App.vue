@@ -16,13 +16,16 @@ import NavbarComponent from "@/components/NavbarComponent/index.vue";
   font-size: 62.5%;
   background: #FEF6EC;
   max-width: 100vw;
-  max-height: 100vh;
-  overflow: hidden;
+  /* Allow vertical scrolling so content like clocks is never clipped */
+  min-height: 100vh;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 :global(#app) {
   width: 100vw;
-  height: 100vh;
+  /* Stretch to fill but allow taller pages to scroll */
+  min-height: 100vh;
   display: flex;
   flex-direction: column;
 }

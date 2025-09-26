@@ -234,6 +234,8 @@ $secondary-color: rgba(235, 137, 79, 0.7);
       align-items: center;
       justify-content: space-between;
       padding: 0 6vw;
+      /* Align with Pass button center like PVP mode */
+      margin-top: -12vh;
 
       .board-box {
         width: 100%;
@@ -285,9 +287,10 @@ $secondary-color: rgba(235, 137, 79, 0.7);
 
   // 固定占位，避免倒计时出现/消失引发布局跳动
   .countdown-slot {
-    --countdown-height: 120px;
+    /* Shorter, responsive clock row to avoid clipping */
+    --countdown-height: clamp(72px, 10vw, 110px);
     height: var(--countdown-height);
-    margin: 8px 0 12px 0;
+    margin: 0 0 8px 0;
     display: flex;
     justify-content: center;
     align-items: center;
@@ -295,21 +298,6 @@ $secondary-color: rgba(235, 137, 79, 0.7);
   .countdown-inner { opacity: 0; transition: opacity 0.2s ease; }
   .countdown-inner.visible { opacity: 1; }
 
-  /* 估算结果表 & 点目工具条复用房间页样式 */
-  .score-estimate-summary { margin: 0 6vw 1rem 6vw; display: flex; justify-content: center; }
-  .estimate-table { border-collapse: collapse; min-width: 320px; background: rgba(255,255,255,0.85); backdrop-filter: blur(4px); border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
-  .estimate-table th, .estimate-table td { padding: 12px 16px; text-align: center; border-bottom: 1px solid rgba(0,0,0,0.06); color: #6E4C41; font-size: 16px; }
-  .estimate-table thead th { background: #EB894F; color: #fff; }
-  .estimate-table tbody tr:last-child td { border-bottom: none; }
-  .estimate-table tbody th { text-align: left; padding-left: 16px; }
-
-  .stone-removal-bar { margin: 0 6vw 1rem 6vw; padding: 12px 16px; background: rgba(235,137,79,0.12); border: 1px solid rgba(235,137,79,0.25); border-radius: 12px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 4px 12px rgba(0,0,0,0.05); color: #6E4C41; font-size: 16px; }
-  .stone-removal-bar .title { font-weight: 700; }
-  .stone-removal-bar .summary { flex: 1; text-align: center; font-weight: 600; }
-  .stone-removal-bar .actions { display: flex; gap: 10px; align-items: center; }
-  .sr-btn { padding: 10px 14px; border-radius: 10px; border: 1px solid rgba(0,0,0,0.08); background: #fff; cursor: pointer; font-size: 15px; }
-  .sr-btn.primary { background: #EB894F; color: #fff; border-color: #EB894F; }
-  .status.ok { color: #2e7d32; font-weight: 600; font-size: 15px; }
 }
 
 @keyframes slideIn {

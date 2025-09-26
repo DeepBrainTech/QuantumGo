@@ -21,7 +21,7 @@
           <span class="value white animate-count">{{ stoneRemovalPhase ? adjustedWhiteScore : game.whitePoints }}</span>
         </div>
       </div>
-      <div class="item btn score-estimator-btn" @click="estimateScore" :disabled="estimatingScore">
+      <div class="item btn" @click="estimateScore" :class="{ disabled: estimatingScore }">
         {{ estimatingScore ? lang.text.room.estimating : (showScoreEstimate ? lang.text.room.hide_estimate : lang.text.room.score_estimator) }}
       </div>
   </div>
@@ -99,11 +99,11 @@
       <div class="countdown-slot">
         <div class="countdown-inner" :class="{ visible: true }" style="display:flex; gap: 24px; align-items:center;">
           <div style="display:flex; flex-direction:column; align-items:center;">
-            <el-progress type="circle" striped striped-flow :percentage="progressBlack" :color="progressColors" :format="() => blackClock" />
+            <el-progress type="circle" :width="100" striped striped-flow :percentage="progressBlack" :color="progressColors" :format="() => blackClock" />
             <div style="margin-top:6px; font-weight:600; color:#333;">{{ lang.text.room.side_black }}</div>
           </div>
           <div style="display:flex; flex-direction:column; align-items:center;">
-            <el-progress type="circle" striped striped-flow :percentage="progressWhite" :color="progressColors" :format="() => whiteClock" />
+            <el-progress type="circle" :width="100" striped striped-flow :percentage="progressWhite" :color="progressColors" :format="() => whiteClock" />
             <div style="margin-top:6px; font-weight:600; color:#333;">{{ lang.text.room.side_white }}</div>
           </div>
         </div>
@@ -1112,7 +1112,7 @@ const showScoreDetail = () => {
 
 /* Review bar */
 .review-bar {
-  margin: 10px 6vw;
+  margin: 2px 6vw 6px;
   display: flex;
   align-items: center;
   justify-content: space-between;

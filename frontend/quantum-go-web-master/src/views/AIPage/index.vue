@@ -20,10 +20,10 @@
           <span class="value white animate-count">{{ stoneRemovalPhase ? adjustedWhiteScore : game.whitePoints }}</span>
         </div>
       </div>
-      <div class="item btn score-estimator-btn" @click="estimateScore" :disabled="estimatingScore">
+      <div class="item btn" @click="estimateScore" :class="{ disabled: estimatingScore }">
         {{ estimatingScore ? lang.text.room.estimating : (showScoreEstimate ? lang.text.room.hide_estimate : lang.text.room.score_estimator) }}
       </div>
-      <div class="item btn end-game-btn" @click="endGameNow">{{ lang.text.room.end_game }}</div>
+      <div class="item btn" @click="endGameNow">{{ lang.text.room.end_game }}</div>
     </div>
     <div class="body">
       <div v-if="stoneRemovalPhase" class="stone-removal-bar">
@@ -95,11 +95,11 @@
       <div class="countdown-slot">
         <div class="countdown-inner" :class="{ visible: true }" style="display:flex; gap: 24px; align-items:center;">
           <div style="display:flex; flex-direction:column; align-items:center;">
-            <el-progress type="circle" striped striped-flow :percentage="progressBlack" :color="progressColors" :format="() => blackClock" />
+            <el-progress type="circle" :width="100" striped striped-flow :percentage="progressBlack" :color="progressColors" :format="() => blackClock" />
             <div style="margin-top:6px; font-weight:600; color:#333;">{{ lang.text.room.side_black }}</div>
           </div>
           <div style="display:flex; flex-direction:column; align-items:center;">
-            <el-progress type="circle" striped striped-flow :percentage="progressWhite" :color="progressColors" :format="() => whiteClock" />
+            <el-progress type="circle" :width="100" striped striped-flow :percentage="progressWhite" :color="progressColors" :format="() => whiteClock" />
             <div style="margin-top:6px; font-weight:600; color:#333;">{{ lang.text.room.side_white }}</div>
           </div>
         </div>
@@ -310,37 +310,48 @@ const progressBlack = ref(0);
 const progressWhite = ref(0);
 let clockTimer: any = null;
 
-function startClockLoop() {
-  clearInterval(clockTimer);
-  clockTimer = setInterval(() => {
-    const now = Date.now();
-    try {
-      blackClock.value = displayString(timeRt, 'black', now);
-      whiteClock.value = displayString(timeRt, 'white', now);
-      const msB = currentMsUntilTimeout(timeRt, 'black', now);
-      const msW = currentMsUntilTimeout(timeRt, 'white', now);
-      const cfg: any = timeRt.config;
-      if (cfg) {
-        if (timeRt.forPlayer.black.onThePlaySince != null && msB != null) {
-          let denom = cfg.mainTimeMS || 1;
-          if (cfg.type === 'byoyomi' || cfg.type === 'canadian') {
-            const s: any = timeRt.forPlayer.black.clockState;
-            denom = s.mainTimeRemainingMS > 0 ? cfg.mainTimeMS : cfg.periodTimeMS;
+  function startClockLoop() {
+    clearInterval(clockTimer);
+    clockTimer = setInterval(() => {
+      const now = Date.now();
+      try {
+        blackClock.value = displayString(timeRt, 'black', now);
+        whiteClock.value = displayString(timeRt, 'white', now);
+        const msB = currentMsUntilTimeout(timeRt, 'black', now);
+        const msW = currentMsUntilTimeout(timeRt, 'white', now);
+        const cfg: any = timeRt.config;
+        if (cfg) {
+          if (timeRt.forPlayer.black.onThePlaySince != null && msB != null) {
+            let denom = cfg.mainTimeMS || 1;
+            if (cfg.type === 'byoyomi' || cfg.type === 'canadian') {
+              const s: any = timeRt.forPlayer.black.clockState;
+              denom = s.mainTimeRemainingMS > 0 ? cfg.mainTimeMS : cfg.periodTimeMS;
+            }
+            progressBlack.value = Math.max(0, Math.min(100, Math.floor((msB / Math.max(1, denom)) * 100)));
           }
-          progressBlack.value = Math.max(0, Math.min(100, Math.floor((msB / Math.max(1, denom)) * 100)));
-        }
-        if (timeRt.forPlayer.white.onThePlaySince != null && msW != null) {
-          let denom = cfg.mainTimeMS || 1;
-          if (cfg.type === 'byoyomi' || cfg.type === 'canadian') {
-            const s: any = timeRt.forPlayer.white.clockState;
-            denom = s.mainTimeRemainingMS > 0 ? cfg.mainTimeMS : cfg.periodTimeMS;
+          if (timeRt.forPlayer.white.onThePlaySince != null && msW != null) {
+            let denom = cfg.mainTimeMS || 1;
+            if (cfg.type === 'byoyomi' || cfg.type === 'canadian') {
+              const s: any = timeRt.forPlayer.white.clockState;
+              denom = s.mainTimeRemainingMS > 0 ? cfg.mainTimeMS : cfg.periodTimeMS;
+            }
+            progressWhite.value = Math.max(0, Math.min(100, Math.floor((msW / Math.max(1, denom)) * 100)));
           }
-          progressWhite.value = Math.max(0, Math.min(100, Math.floor((msW / Math.max(1, denom)) * 100)));
+          // Auto-lose on time for player (AI assumed never times out)
+          if (msB !== null && msB <= 0) {
+            store.commit('game/setStatus', 'finished');
+            store.commit('game/setRound', false);
+            clearInterval(clockTimer);
+            ElMessageBox.alert(
+              lang.value.text.room.ai_win,
+              lang.value.text.room.finish_title,
+              { confirmButtonText: 'OK' }
+            );
+          }
         }
-      }
-    } catch {}
-  }, 100);
-}
+      } catch {}
+    }, 100);
+  }
 
 // Legacy countdown disabled
 const startPlayerTimer = () => { /* no-op */ };
@@ -1140,7 +1151,7 @@ onUnmounted(() => {
 
 /* Review bar */
 .review-bar {
-  margin: 10px 6vw;
+  margin: 2px 6vw 6px;
   display: flex;
   align-items: center;
   justify-content: space-between;

@@ -44,6 +44,8 @@ pub struct AiDualGenmoveRequest {
     pub rules: Option<String>,
     pub forbidden: Option<Vec<String>>, // xy strings that are illegal under dual-board rules
     pub k: Option<usize>,               // optional top-K candidates to consider from board A
+    // Optional metric selection: "winrate" (default) or "score_lead"
+    pub metric: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -138,6 +140,17 @@ async fn read_gtp_reply(reader: &mut (impl AsyncBufReadExt + Unpin)) -> io::Resu
     Ok(first_line[1..].trim().to_string())
 }
 
+// Which metric to optimize when reading analysis output
+enum Metric { Winrate, ScoreLead }
+
+fn parse_metric(m: Option<&str>) -> Metric {
+    match m.map(|s| s.to_ascii_lowercase()) {
+        Some(ref s) if s == "winrate" => Metric::Winrate,
+        // Default to score lead if unspecified or any of these aliases
+        _ => Metric::ScoreLead,
+    }
+}
+
 struct KataGoEngine {
     child: Child,
     stdin: ChildStdin,
@@ -185,21 +198,23 @@ impl KataGoEngine {
         Ok((first_line[1..].trim().to_string(), info_lines))
     }
 
-    // Run kata-genmove_analyze to obtain candidate moves with their first-board winrates (if available in info lines).
-    async fn analyze_candidates(&mut self, size: u8, komi: f32, moves: &Vec<MoveItem>, color: &str, k: usize) -> io::Result<Vec<(String, f32)>> {
+    // Run kata-genmove_analyze to obtain candidate moves with their first-board metric (winrate or scoreLead),
+    // and also return the winrate for optional thresholding.
+    async fn analyze_candidates(&mut self, size: u8, komi: f32, moves: &Vec<MoveItem>, color: &str, k: usize, metric: &Metric) -> io::Result<Vec<(String, f32, f32)>> {
         self.setup_position(size, komi, moves).await?;
         // Trigger a single search that also returns a normal GTP reply, while streaming info lines.
         self.send(&format!("kata-genmove_analyze {}", color_to_gtp(color))).await?;
         let (_reply, info_lines) = self.read_reply_with_info().await?;
 
-        // Parse LZ-style info lines: e.g., "info move D16 visits 123 winrate 54.32% ..."
-        let mut by_move: std::collections::HashMap<String, (i64, f32)> = std::collections::HashMap::new();
+        // Parse LZ-style info lines: e.g., "info move D16 visits 123 winrate 54.32% scoreLead 2.3 ..."
+        let mut by_move: std::collections::HashMap<String, (i64, f32, f32)> = std::collections::HashMap::new();
         for line in info_lines {
             // Quick-and-robust parse: find tokens
             let tokens: Vec<&str> = line.split_whitespace().collect();
             let mut mv: Option<String> = None;
             let mut visits: Option<i64> = None;
             let mut wr: Option<f32> = None;
+            let mut sl: Option<f32> = None;
             let mut i = 0usize;
             while i + 1 < tokens.len() {
                 match tokens[i] {
@@ -216,41 +231,55 @@ impl KataGoEngine {
                         if let Ok(v) = t.parse::<f32>() { wr = Some(v / 100.0); }
                         i += 2; continue;
                     }
+                    "scorelead" | "scoreLead" | "score_lead" => {
+                        if let Ok(v) = tokens[i+1].parse::<f32>() { sl = Some(v); }
+                        i += 2; continue;
+                    }
                     _ => { i += 1; }
                 }
             }
             if let Some(m) = mv {
                 let v = visits.unwrap_or(0);
-                let w = wr.unwrap_or(0.0);
+                // Compute both metric-specific value and winrate value with fallbacks
+                let wr_val = wr.or(sl.map(|s| 0.5 + (s / 100.0))).unwrap_or(0.5);
+                let met_val = match metric {
+                    Metric::Winrate => wr_val,
+                    Metric::ScoreLead => sl.or(wr.map(|w| (w - 0.5) * 100.0)).unwrap_or(0.0),
+                };
                 // Keep the latest/best by visits
-                let entry = by_move.entry(m).or_insert((v, w));
-                if v > entry.0 { *entry = (v, w); }
+                let entry = by_move.entry(m).or_insert((v, met_val, wr_val));
+                if v > entry.0 { *entry = (v, met_val, wr_val); }
             }
         }
 
-        let mut items: Vec<(String, i64, f32)> = by_move.into_iter().map(|(m, (v, w))| (m, v, w)).collect();
+        let mut items: Vec<(String, i64, f32, f32)> = by_move.into_iter().map(|(m, (v, met, wr))| (m, v, met, wr)).collect();
         // Sort by visits desc as a proxy of strength
         items.sort_by(|a, b| b.1.cmp(&a.1));
-        let mut result: Vec<(String, f32)> = Vec::new();
-        for (m, _v, w) in items.into_iter().take(k) {
-            result.push((m, w));
+        let mut result: Vec<(String, f32, f32)> = Vec::new();
+        for (m, _v, met, wr) in items.into_iter().take(k) {
+            result.push((m, met, wr));
         }
         // Fallback: if nothing parsed, do a simple genmove
         if result.is_empty() {
             self.setup_position(size, komi, moves).await?;
             self.send(&format!("genmove {}", color_to_gtp(color))).await?;
             let ans = read_gtp_reply(&mut self.reader).await?;
-            return Ok(vec![(ans, 0.5)]);
+            // Default neutral values
+            return Ok(vec![(ans, match metric { Metric::Winrate => 0.5, Metric::ScoreLead => 0.0 }, 0.5)]);
         }
         Ok(result)
     }
 
-    // Estimate our side's winrate on board B after playing a candidate, by running a short analyze for the opponent.
-    async fn evaluate_on_second_board(&mut self, size: u8, komi: f32, moves: &Vec<MoveItem>, our_color: &str, candidate_gtp: &str) -> io::Result<f32> {
+    // Estimate our side's metric (winrate or scoreLead) on board B after playing a candidate,
+    // and also compute our winrate, by running a short analyze for the opponent.
+    async fn evaluate_on_second_board(&mut self, size: u8, komi: f32, moves: &Vec<MoveItem>, our_color: &str, candidate_gtp: &str, metric: &Metric) -> io::Result<(f32, f32)> {
         self.setup_position(size, komi, moves).await?;
         if candidate_gtp.eq_ignore_ascii_case("PASS") || candidate_gtp.eq_ignore_ascii_case("RESIGN") {
-            // PASS/RESIGN: treat as neutral/very bad respectively
-            return Ok(if candidate_gtp.eq_ignore_ascii_case("PASS") { 0.5 } else { 0.0 });
+            // PASS/RESIGN: neutral/very bad depending on metric. For winrate return also wr.
+            return Ok(match metric {
+                Metric::Winrate => (if candidate_gtp.eq_ignore_ascii_case("PASS") { 0.5 } else { 0.0 }, if candidate_gtp.eq_ignore_ascii_case("PASS") { 0.5 } else { 0.0 }),
+                Metric::ScoreLead => (if candidate_gtp.eq_ignore_ascii_case("PASS") { 0.0 } else { -1000.0 }, if candidate_gtp.eq_ignore_ascii_case("PASS") { 0.5 } else { 0.0 }),
+            });
         }
         // Play our candidate
         self.send(&format!("play {} {}", color_to_gtp(our_color), candidate_gtp)).await?;
@@ -264,24 +293,38 @@ impl KataGoEngine {
         self.send(&format!("kata-genmove_analyze {}", opp)).await?;
         let (_reply, info_lines) = self.read_reply_with_info().await?;
 
-        // Parse last seen winrate for opponent
+        // Parse last seen metric for opponent
         let mut last_wr: Option<f32> = None;
+        let mut last_sl: Option<f32> = None;
         for line in info_lines {
             let tokens: Vec<&str> = line.split_whitespace().collect();
-            let mut i = 0usize; let mut wr: Option<f32> = None;
+            let mut i = 0usize;
+            let mut wr: Option<f32> = None;
+            let mut sl: Option<f32> = None;
             while i + 1 < tokens.len() {
-                if tokens[i] == "winrate" {
-                    let t = tokens[i+1].trim_end_matches('%');
-                    if let Ok(v) = t.parse::<f32>() { wr = Some(v / 100.0); }
-                    i += 2; continue;
+                match tokens[i] {
+                    "winrate" => {
+                        let t = tokens[i+1].trim_end_matches('%');
+                        if let Ok(v) = t.parse::<f32>() { wr = Some(v / 100.0); }
+                        i += 2; continue;
+                    }
+                    "scorelead" | "scoreLead" | "score_lead" => {
+                        if let Ok(v) = tokens[i+1].parse::<f32>() { sl = Some(v); }
+                        i += 2; continue;
+                    }
+                    _ => { i += 1; }
                 }
-                i += 1;
             }
             if let Some(w) = wr { last_wr = Some(w); }
+            if let Some(s) = sl { last_sl = Some(s); }
         }
-        // Convert opponent winrate to ours
-        let opp_wr = last_wr.unwrap_or(0.5);
-        Ok(1.0 - opp_wr)
+        let our_wr = 1.0 - last_wr.unwrap_or(0.5);
+        let met_val = match metric {
+            Metric::Winrate => our_wr,
+            // Opponent's scoreLead is from opponent perspective; invert to get ours
+            Metric::ScoreLead => -(last_sl.unwrap_or(0.0)),
+        };
+        Ok((met_val, our_wr))
     }
     async fn new() -> io::Result<Self> {
         // Prefer a pre-extracted binary if present to avoid AppImage extraction cost
@@ -426,6 +469,7 @@ pub async fn genmove_dual_with_katago(req: AiDualGenmoveRequest) -> Result<AiDua
     let forbidden: std::collections::HashSet<String> = req.forbidden.clone().unwrap_or_default().into_iter().collect();
     let komi = req.komi.unwrap_or(7.5);
     let k = req.k.unwrap_or(8).max(1).min(20);
+    let metric = parse_metric(req.metric.as_deref());
 
     let mut attempts = 0usize;
     let max_attempts = 3usize;
@@ -433,10 +477,10 @@ pub async fn genmove_dual_with_katago(req: AiDualGenmoveRequest) -> Result<AiDua
 
     loop {
         // 1) Get candidates from board A
-        let mut candidates = engine.analyze_candidates(req.board_size, komi, &req.board_a_moves, &req.next_to_move, k).await?;
+        let mut candidates = engine.analyze_candidates(req.board_size, komi, &req.board_a_moves, &req.next_to_move, k, &metric).await?;
 
         // Filter forbidden and normalize coords → XY for checking
-        candidates.retain(|(gtp, _)| {
+        candidates.retain(|(gtp, _, _)| {
             if gtp.eq_ignore_ascii_case("PASS") || gtp.eq_ignore_ascii_case("RESIGN") { return true; }
             match gtp_to_xy(gtp, req.board_size) { Ok(xy) => !forbidden.contains(&xy), Err(_) => true }
         });
@@ -447,12 +491,42 @@ pub async fn genmove_dual_with_katago(req: AiDualGenmoveRequest) -> Result<AiDua
 
         // 2) Evaluate each candidate on board B and combine scores
         let mut best: Option<(String, f32)> = None;
-        for (cand_gtp, a_wr) in candidates {
-            let b_wr = engine.evaluate_on_second_board(req.board_size, komi, &req.board_b_moves, &req.next_to_move, &cand_gtp).await?;
-            let score = a_wr.min(b_wr); // conservative combine
-            match &mut best {
-                None => best = Some((cand_gtp.clone(), score)),
-                Some((_m, s)) => { if score > *s { *s = score; best.as_mut().unwrap().0 = cand_gtp.clone(); } }
+
+        match metric {
+            Metric::Winrate => {
+                for (cand_gtp, a_wr, _a_wr_copy) in candidates.into_iter().map(|(m, met, wr)| (m, met, wr)) {
+                    let (b_wr, _b_wr_copy) = engine.evaluate_on_second_board(req.board_size, komi, &req.board_b_moves, &req.next_to_move, &cand_gtp, &metric).await?;
+                    let score = a_wr.min(b_wr); // as before
+                    match &mut best {
+                        None => best = Some((cand_gtp.clone(), score)),
+                        Some((_m, s)) => { if score > *s { *s = score; best.as_mut().unwrap().0 = cand_gtp.clone(); } }
+                    }
+                }
+            }
+            Metric::ScoreLead => {
+                const MIN_WR_THRESHOLD: f32 = 0.35;
+                // First pass: enforce winrate threshold on both boards
+                for (cand_gtp, a_sl, a_wr) in &candidates {
+                    let (b_sl, b_wr) = engine.evaluate_on_second_board(req.board_size, komi, &req.board_b_moves, &req.next_to_move, cand_gtp, &metric).await?;
+                    if *a_wr >= MIN_WR_THRESHOLD && b_wr >= MIN_WR_THRESHOLD {
+                        let score = a_sl + b_sl; // maximize total score lead
+                        match &mut best {
+                            None => best = Some((cand_gtp.clone(), score)),
+                            Some((_m, s)) => { if score > *s { *s = score; best.as_mut().unwrap().0 = cand_gtp.clone(); } }
+                        }
+                    }
+                }
+                // Fallback: if nothing passed threshold, choose the best by pure sum
+                if best.is_none() {
+                    for (cand_gtp, a_sl, _a_wr) in candidates {
+                        let (b_sl, _b_wr) = engine.evaluate_on_second_board(req.board_size, komi, &req.board_b_moves, &req.next_to_move, &cand_gtp, &metric).await?;
+                        let score = a_sl + b_sl;
+                        match &mut best {
+                            None => best = Some((cand_gtp.clone(), score)),
+                            Some((_m, s)) => { if score > *s { *s = score; best.as_mut().unwrap().0 = cand_gtp.clone(); } }
+                        }
+                    }
+                }
             }
         }
 
