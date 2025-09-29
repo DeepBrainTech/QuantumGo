@@ -147,8 +147,9 @@ onMounted(() => {
   margin: 0 auto;
   padding: 20px;
   min-height: 100vh;
-  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-  color: #2c3e50;
+  /* Inherit the app's warm background and text color */
+  background: transparent;
+  color: #364251;
 }
 
 .header {
@@ -202,9 +203,11 @@ onMounted(() => {
 }
 
 .leaderboard-container {
-  background: white;
+  background: #FEF6EC;
   border-radius: 15px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+  /* Subtle frame to match UI tone */
+  border: 1px solid rgba(54, 66, 81, 0.12);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.06);
   overflow: hidden;
   margin-bottom: 30px;
 }
@@ -226,10 +229,10 @@ onMounted(() => {
     grid-template-columns: 80px 2fr 1fr 1fr 1fr 1fr;
     gap: 20px;
     padding: 20px;
-    background: #f8f9fa;
-    border-bottom: 2px solid #e9ecef;
+    background: #F7EBDD; /* warm header to match app background */
+    border-bottom: 1px solid rgba(54, 66, 81, 0.12);
     font-weight: 700;
-    color: #495057;
+    color: #364251;
     font-size: 0.9rem;
     text-transform: uppercase;
     letter-spacing: 0.5px;
@@ -240,12 +243,12 @@ onMounted(() => {
     grid-template-columns: 80px 2fr 1fr 1fr 1fr 1fr;
     gap: 20px;
     padding: 20px;
-    border-bottom: 1px solid #f1f3f4;
+    border-bottom: 1px solid rgba(54, 66, 81, 0.12);
     align-items: center;
     transition: background-color 0.2s ease;
     
     &:hover {
-      background: #f8f9fa;
+      background: #FBF4EA;
     }
     
     &:last-child {
@@ -281,8 +284,8 @@ onMounted(() => {
       }
       
       &.normal {
-        background: #e9ecef;
-        color: #6c757d;
+        background: #EDE2D2;
+        color: #7a6b5b;
       }
     }
   }
