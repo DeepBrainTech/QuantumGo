@@ -1155,6 +1155,7 @@ onUnmounted(() => {
 
 <style scoped lang="scss">
 @use "./index.scss" as *;
+@use "@/assets/styles/score-removal.scss" as *;
 
 /* Review bar */
 .review-bar {
