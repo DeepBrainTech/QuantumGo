@@ -185,6 +185,7 @@ import { canPutChess, canPutChessSituationalSuperko, hashBoardWithTurn } from "@
 import { calculateGoResult } from "@/utils/chess2";
 import { exportQuantumSGF } from "@/utils/sgf";
 import { initRuntime, startTurn, finishMove, currentMsUntilTimeout, displayString } from "@/utils/timeControl";
+import * as sound from "@/utils/sound";
 
 const route = useRoute();
 const router = useRouter();
@@ -372,6 +373,9 @@ function initAIGame() {
   store.commit('game/setRound', true); // Black to move
   store.commit('game/setCamp', 'black');
 
+  // New game boundary (AI): restart BGM from the beginning
+  sound.startBgmFromBeginning();
+
   // Reset boards and counters
   game.value.board1.clear();
   game.value.board2.clear();
@@ -380,6 +384,9 @@ function initAIGame() {
   game.value.subStatus = 'black';
   game.value.blackQuantum = '';
   game.value.whiteQuantum = '';
+  // Reset displayed scores for a fresh board
+  game.value.blackPoints = 0;
+  game.value.whitePoints = game.value.komi ?? 7.5;
 
   // Reset superko histories
   if (game.value.history1?.clear) game.value.history1.clear();

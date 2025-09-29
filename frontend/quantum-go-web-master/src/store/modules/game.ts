@@ -1,6 +1,7 @@
 import { Board, BoardModel, Chessman, ChessmanRecord, ChessmanRecords, ChessmanType } from "@/utils/types";
 import { canPutChess, getCapturedChess, canPutChessSuperko, canPutChessSituationalSuperko, hashBoard, hashBoardWithTurn, explainSituationalReason } from "@/utils/chess";
 import { calculateGoResult } from "@/utils/chess2";
+import * as sound from "@/utils/sound";
 import api from "@/utils/api";
 
 const state = () => ({
@@ -35,7 +36,9 @@ const state = () => ({
   // Review mode state
   reviewMode: false as boolean,
   // Number of records applied on board for preview (0..records.length)
-  reviewIndex: 0 as number
+  reviewIndex: 0 as number,
+  // Background music toggle (only affects chinese-ancient music)
+  bgmEnabled: true as boolean
 });
 
 const mutations = {
@@ -45,6 +48,11 @@ const mutations = {
 
   setStatus(state: any, status: "waiting" | "playing" | "finished") {
     state.status = status;
+    // Sync BGM when status changes
+    sound.syncBgm(status, state.bgmEnabled);
+    if (status === "playing") {
+      sound.playStart();
+    }
   },
 
   setRound(state: any, round: boolean) {
@@ -69,6 +77,11 @@ const mutations = {
   },
   setKomi(state: any, komi: number) {
     state.komi = komi;
+  },
+
+  setBgmEnabled(state: any, on: boolean) {
+    state.bgmEnabled = on;
+    sound.syncBgm(state.status, state.bgmEnabled);
   },
 
   setChess(state: any, chessman1: Chessman) {
@@ -136,6 +149,11 @@ const mutations = {
     // Reset review state
     state.reviewMode = false;
     state.reviewIndex = 0;
+    // Reset scores to initial (empty-board + komi to White once)
+    state.blackPoints = 0;
+    state.whitePoints = state.komi ?? 7.5;
+    // Stop BGM when resetting to initial board
+    sound.syncBgm(state.status, state.bgmEnabled);
   },
 
   setReviewMode(state: any, on: boolean) {
@@ -169,6 +187,11 @@ const actions = {
     if (status === "waiting" && data.visitor_id) {
       state.status = "playing";
     }
+    // Sync BGM/start sound when we receive server state
+    if (state.status === "playing") {
+      sound.playStart();
+    }
+    sound.syncBgm(state.status, state.bgmEnabled);
     const isOwner = owner_id === rootState.user.id;
     state.camp = isOwner ? "black" : "white";
     state.round = isOwner ? round === "black" : round === "white";
@@ -177,6 +200,9 @@ const actions = {
       state.blackQuantum = "";
       state.whiteQuantum = "";
       state.subStatus = "black";
+      // Empty board -> initial scores
+      state.blackPoints = 0;
+      state.whitePoints = state.komi ?? 7.5;
     } else {
       boardMap.forEach((chessman: any) => {
         if (chessman.position !== chessman.brother) {
@@ -376,7 +402,7 @@ const actions = {
     // 计算各棋盘吃子：棋盘1按当前棋子颜色，棋盘2用相反颜色
     const capturedChess1 = getCapturedChess(state.board1, type1, state.model);
     const capturedChess2 = getCapturedChess(state.board2, type2, state.model);
-
+    
     // Govariants Quantum entanglement: if a stone is captured on one board,
     // its entangled counterpart on the other board is also removed.
     // Build closure sets per board.
@@ -419,6 +445,8 @@ const actions = {
       commit("deleteChessBoard2", pos);
     });
     state.records.push(record);
+    // Play put sound on successful move
+    sound.playPut();
     // 更新局面历史（位置超劫）
     // Record SSK state keyed by current player (pre-toggle), matching govariants
     state.history1.add(hashBoardWithTurn(state.board1, type1));

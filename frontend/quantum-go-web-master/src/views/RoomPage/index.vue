@@ -194,6 +194,7 @@ import { useStore } from "vuex";
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import api from "@/utils/api";
+import * as sound from "@/utils/sound";
 import { ElMessage, ElMessageBox, ElProgress, ElLoading, ElDialog, ElButton } from "element-plus";
 import { Chessman } from "@/utils/types";
 import { canPutChess } from "@/utils/chess";
@@ -409,7 +410,10 @@ const initGame = async (data: Record<string, any>) => {
       startTurn(timeRt, nextSide, now);
 
     } else if (data.type === "startGame") {
-      game.value.status = "playing";
+      // Use store mutation so audio/BGM and other side-effects run
+      store.commit("game/setStatus", "playing");
+      // New game boundary: restart BGM from the beginning
+      sound.startBgmFromBeginning();
       ElMessage.success(lang.value.text.room.start_game);
       // set initial side on clock
       const now = Date.now();

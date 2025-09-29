@@ -2,6 +2,9 @@
   <nav class="navbar">
     <div class="logo" @click="logoClick">{{ lang.text.navbar.logo }}</div>
     <div class="nav-right">
+      <button class="nav-button" @click="toggleBgm">
+        <span>{{ bgmEnabled ? '🔊' : '🔇' }}</span>
+      </button>
       <button class="nav-button" @click="changeLanguage">
         <!--        <t-icon name="translate-1" />-->
         <span>{{ lang.text.navbar.lang }}</span>
@@ -41,6 +44,7 @@ import { useRouter } from 'vue-router';
 const store = useStore();
 const lang = computed(() => store.state.lang);
 const user = computed(() => store.state.user);
+const bgmEnabled = computed<boolean>(() => store.state.game.bgmEnabled);
 const router = useRouter();
 
 const logoClick = () => {
@@ -77,6 +81,10 @@ const onUserCommand = async (cmd: string) => {
     await store.dispatch('user/logout');
     router.push('/');
   }
+};
+
+const toggleBgm = () => {
+  store.commit('game/setBgmEnabled', !bgmEnabled.value);
 };
 </script>
 
