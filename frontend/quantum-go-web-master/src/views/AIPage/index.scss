@@ -285,6 +285,8 @@ $secondary-color: rgba(235, 137, 79, 0.7);
     }
   }
 
+  // Keep original layout; clicks fixed by toolbar z-index
+
   // 固定占位，避免倒计时出现/消失引发布局跳动
   .countdown-slot {
     /* Shorter, responsive clock row to avoid clipping */

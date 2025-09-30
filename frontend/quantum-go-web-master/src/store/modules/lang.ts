@@ -41,7 +41,11 @@ const text = {
       login: "Login"
     },
     common: {
-      login_required: "Log in to continue."
+      login_required: "Log in to continue.",
+      waiting: "Waiting",
+      opponent: "Opponent",
+      owner: "Owner",
+      you: "You"
     },
     board: {
       put_chess_error: "No playing chess here",
@@ -187,8 +191,13 @@ const text = {
       login: "登录"
     },
     common: {
-      login_required: "请先登录"
-    },
+      login_required: "需要登录后继续。",
+      waiting: "等待中",
+      opponent: "对手",
+      owner: "房主",
+      you: "你"
+       },   
+      
     board: {
       put_chess_error: "此处不能落子",
       ws_connection_error: "游戏服务器连接错误",

@@ -50,8 +50,14 @@
             </span>
           </div>
           <div class="col-username">{{ entry.username }}</div>
-          <div class="col-rating">{{ Math.round(entry.rating) }}</div>
-          <div class="col-rd">{{ Math.round(entry.rd) }}</div>
+          <div class="col-rating">
+            <div class="main">{{ Math.round(entry.rating) }}</div>
+            <div class="sub">{{ rankLabel(entry.rating) }}</div>
+          </div>
+          <div class="col-rd">
+            <div class="main">{{ Math.round(entry.rd) }}</div>
+            <div class="sub">± {{ rankDelta(entry.rating, entry.rd) }}</div>
+          </div>
           <div class="col-games">{{ entry.games_played }}</div>
           <div class="col-winrate">{{ calculateWinRate(entry).toFixed(1) }}%</div>
         </div>
@@ -75,6 +81,7 @@
 import { ref, computed, onMounted } from 'vue';
 import { useStore } from 'vuex';
 import { ElLoading } from 'element-plus';
+import { ratingToContinuousRank, rdToRankDelta } from '@/utils/rating';
 import api from '@/utils/api';
 
 const store = useStore();
@@ -134,6 +141,16 @@ const getRankClass = (rank: number) => {
 const calculateWinRate = (entry: any) => {
   if (entry.games_played === 0) return 0;
   return (entry.wins / entry.games_played) * 100;
+};
+
+const rankLabel = (rating: number) => {
+  const r = ratingToContinuousRank(rating);
+  const v = Math.max(0, Math.round(r.value * 10) / 10);
+  return `${v}${r.label}`;
+};
+
+const rankDelta = (rating: number, rd: number) => {
+  return (Math.round(rdToRankDelta(rating, rd) * 10) / 10).toFixed(1);
 };
 
 onMounted(() => {
@@ -244,7 +261,7 @@ onMounted(() => {
     gap: 20px;
     padding: 20px;
     border-bottom: 1px solid rgba(54, 66, 81, 0.12);
-    align-items: center;
+    align-items: flex-start; /* top-align main numbers across columns */
     transition: background-color 0.2s ease;
     
     &:hover {
@@ -296,24 +313,27 @@ onMounted(() => {
   }
   
   .col-rating {
-    font-weight: 700;
-    color: #27ae60;
-    font-size: 1.1rem;
+    .main { font-weight: 700; color: #27ae60; font-size: 1.1rem; line-height: 1.1; }
+    .sub { color: #7f8c8d; font-size: 0.85rem; line-height: 1.1; margin-top: 2px; }
   }
   
   .col-rd {
-    color: #7f8c8d;
-    font-size: 0.9rem;
+    .main { color: #7f8c8d; font-size: 1.1rem; line-height: 1.1; }
+    .sub { color: #9aa3a4; font-size: 0.85rem; line-height: 1.1; margin-top: 2px; }
   }
   
   .col-games {
     color: #34495e;
     font-weight: 500;
+    font-size: 1.1rem;
+    line-height: 1.1;
   }
   
   .col-winrate {
     font-weight: 600;
     color: #e67e22;
+    font-size: 1.1rem;
+    line-height: 1.1;
   }
 }
 

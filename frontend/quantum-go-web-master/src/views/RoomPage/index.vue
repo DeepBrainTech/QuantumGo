@@ -1,5 +1,6 @@
 <template>
   <div class="main">
+    <!-- Operation panel: left-side controls -->
     <div v-if="game.status === 'playing' || game.status === 'waiting'" class="operation">
       <div class="item btn" :class="{ disabled: stoneRemovalPhase }" @click="!stoneRemovalPhase && passChess()">{{ lang.text.room.pass }}</div>
       <div class="item btn" :class="{ disabled: stoneRemovalPhase }" @click="!stoneRemovalPhase && backChess()">{{ lang.text.room.takeback }}</div>
@@ -24,8 +25,30 @@
       <div class="item btn" @click="estimateScore" :class="{ disabled: estimatingScore }">
         {{ estimatingScore ? lang.text.room.estimating : (showScoreEstimate ? lang.text.room.hide_estimate : lang.text.room.score_estimator) }}
       </div>
-  </div>
-    <div class="body">
+    </div> <!-- end .operation -->
+
+    <!-- Player info panel between buttons and boards -->
+    <div class="player-panel" v-if="game.status === 'playing' || game.status === 'waiting'">
+      <div class="player-card black" :class="{ active: sideToMove === 'black' }">
+        <div class="stone black"></div>
+        <div class="meta">
+          <div class="name" :title="blackDisplayName">{{ blackDisplayName }}</div>
+          <div class="rating">{{ blackRatingText }}</div>
+          <div class="rank">{{ blackRankText }}</div>
+        </div>
+      </div>
+      <div class="player-card white" :class="{ active: sideToMove === 'white' }">
+        <div class="stone white"></div>
+        <div class="meta">
+          <div class="name" :title="whiteDisplayName">{{ whiteDisplayName }}</div>
+          <div class="rating">{{ whiteRatingText }}</div>
+          <div class="rank">{{ whiteRankText }}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main body: boards, review, chat -->
+    <div class="body" ref="bodyRef">
       <div v-if="stoneRemovalPhase" class="stone-removal-bar">
         <div class="title">{{ lang.text.room.stone_removal_title }}</div>
         <div class="summary">{{ lang.text.room.board1 }}: {{ board1LeadText }} | {{ lang.text.room.board2 }}: {{ board2LeadText }}</div>
@@ -39,7 +62,11 @@
           <span class="status" :class="{ ok: oppRemovalAccepted }">{{ oppRemovalAccepted ? lang.text.room.opponent_accepted : lang.text.room.opponent_pending }}</span>
         </div>
       </div>
-    <div v-if="showScoreEstimate && scoreEstimateData1 && scoreEstimateData2 && !stoneRemovalPhase" class="score-estimate-summary">
+    <div v-if="showScoreEstimate && scoreEstimateData1 && scoreEstimateData2 && !stoneRemovalPhase"
+         class="score-estimate-summary"
+         ref="summaryRef"
+         :style="{ left: summaryLeft + 'px', top: summaryTop + 'px' }"
+         @mousedown="onSummaryMouseDown">
       <table class="estimate-table">
         <thead>
           <tr>
@@ -191,7 +218,7 @@
 import BoardComponent from "@/components/BoardComponent/index.vue";
 import BarrageComponent from "@/components/BarrageComponent/index.vue";
 import { useStore } from "vuex";
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref, nextTick } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import api from "@/utils/api";
 import * as sound from "@/utils/sound";
@@ -202,6 +229,7 @@ import { calculateGoResult } from "@/utils/chess2";
 import Config from "@/config";
 import { exportQuantumSGF } from "@/utils/sgf";
 import { initRuntime, startTurn, finishMove, currentMsUntilTimeout, displayString } from "@/utils/timeControl";
+import { formatRatingAndRank } from "@/utils/rating";
 
 const route = useRoute();
 const router = useRouter();
@@ -211,6 +239,77 @@ const user = computed(() => store.state.user);
 const game = computed(() => store.state.game);
 const lang = computed(() => store.state.lang);
 
+// Player panel computed side and profile texts
+// Note: game.round 表示“是否轮到我方”，而不是“当前轮到黑/白”。
+// 因此需要结合 camp 推导全局颜色，以便两端都能正确高亮。
+const sideToMove = computed<'black' | 'white'>(() => {
+  const myColor = game.value.camp as 'black' | 'white';
+  if (game.value.round) return myColor;
+  return myColor === 'black' ? 'white' : 'black';
+});
+const blackDisplayName = ref('');
+const whiteDisplayName = ref('');
+const blackRatingText = ref('');
+const whiteRatingText = ref('');
+const blackRankText = ref('');
+const whiteRankText = ref('');
+
+async function updatePlayerPanelFromData(info: any) {
+  try {
+    const ownerId = info?.owner_id as string;
+    const visitorId = (info?.visitor_id ?? null) as string | null;
+    // Black = owner
+    blackDisplayName.value = lang.value.text.common.owner;
+    blackRatingText.value = '-';
+    blackRankText.value = '-';
+    if (ownerId) {
+      const resp: any = await api.getUserProfile(ownerId, game.value.model);
+      const profile = resp?.data ?? resp;
+      if (profile && profile.username) {
+        blackDisplayName.value = profile.username;
+        const { ratingText, rankText } = formatRatingAndRank(profile.rating ?? 0, profile.rd ?? 0);
+        blackRatingText.value = ratingText;
+        blackRankText.value = rankText;
+      }
+      // fallback: if no username returned, use local user's name when viewing as owner
+      if (!blackDisplayName.value && user.value?.id === ownerId && user.value?.name) {
+        blackDisplayName.value = user.value.name;
+      }
+    }
+
+    // White = visitor (or waiting / AI)
+    if (isAIMode.value || info?.game_mode === 'ai') {
+      whiteDisplayName.value = 'AI';
+      whiteRatingText.value = '-';
+      whiteRankText.value = '-';
+    } else if (visitorId) {
+      // Fill with username from profile
+      whiteDisplayName.value = lang.value.text.common.waiting;
+      whiteRatingText.value = '-';
+      whiteRankText.value = '-';
+      try {
+        const respW: any = await api.getUserProfile(visitorId, game.value.model);
+        const profileW = respW?.data ?? respW;
+        if (profileW && profileW.username) {
+          whiteDisplayName.value = profileW.username;
+          const { ratingText, rankText } = formatRatingAndRank(profileW.rating ?? 0, profileW.rd ?? 0);
+          whiteRatingText.value = ratingText;
+          whiteRankText.value = rankText;
+        }
+      } catch {}
+    } else {
+      // Show waiting using i18n common.waiting
+      whiteDisplayName.value = lang.value.text.common.waiting;
+      whiteRatingText.value = '-';
+      whiteRankText.value = '-';
+    }
+  } catch {
+    // fallback
+    if (!blackDisplayName.value) blackDisplayName.value = lang.value.text.common.owner;
+    if (!whiteDisplayName.value) whiteDisplayName.value = lang.value.text.common.waiting;
+  }
+}
+
 // Time control runtime and UI bindings
 let timeRt = initRuntime((game.value?.timeControl ?? null) as any);
 const blackClock = ref('');
@@ -218,6 +317,44 @@ const whiteClock = ref('');
 const progressBlack = ref(0);
 const progressWhite = ref(0);
 let clockTimer: any = null;
+
+// Score summary drag and position
+const summaryRef = ref<HTMLElement | null>(null);
+const bodyRef = ref<HTMLElement | null>(null);
+const summaryLeft = ref(0);
+const summaryTop = ref(0);
+let draggingSummary = false;
+let dragOffsetX = 0;
+let dragOffsetY = 0;
+
+const onSummaryMouseDown = (e: MouseEvent) => {
+  const rect = bodyRef.value?.getBoundingClientRect();
+  draggingSummary = true;
+  // Offset within body container
+  dragOffsetX = e.clientX - (rect ? rect.left : 0) - summaryLeft.value;
+  dragOffsetY = e.clientY - (rect ? rect.top : 0) - summaryTop.value;
+  document.addEventListener('mousemove', onSummaryMouseMove);
+  document.addEventListener('mouseup', onSummaryMouseUp);
+};
+
+const onSummaryMouseMove = (e: MouseEvent) => {
+  if (!draggingSummary) return;
+  const rect = bodyRef.value?.getBoundingClientRect();
+  if (!rect) return;
+  let nx = e.clientX - rect.left - dragOffsetX;
+  let ny = e.clientY - rect.top - dragOffsetY;
+  // clamp to body area
+  nx = Math.max(8, Math.min(nx, rect.width - 8));
+  ny = Math.max(8, Math.min(ny, rect.height - 8));
+  summaryLeft.value = nx;
+  summaryTop.value = ny;
+};
+
+const onSummaryMouseUp = () => {
+  draggingSummary = false;
+  document.removeEventListener('mousemove', onSummaryMouseMove);
+  document.removeEventListener('mouseup', onSummaryMouseUp);
+};
 
 function startClockLoop() {
   clearInterval(clockTimer);
@@ -336,6 +473,14 @@ onMounted(async () => {
 });
 onMounted(() => {
   ws?.close();
+  // set initial position for score summary overlay
+  nextTick(() => {
+    const rect = bodyRef.value?.getBoundingClientRect();
+    if (rect) {
+      summaryLeft.value = Math.floor(rect.width * 0.62);
+      summaryTop.value = 12;
+    }
+  });
 });
 
 const initGame = async (data: Record<string, any>) => {
@@ -347,6 +492,9 @@ const initGame = async (data: Record<string, any>) => {
   console.log("Game status:", game.value.status);
   console.log("Game round:", game.value.round);
   console.log("Game camp:", game.value.camp);
+  
+  // Populate player panel from backend user ids
+  await updatePlayerPanelFromData(data);
   
   // å»ºç«‹WebSocketè¿žæŽ¥ç”¨äºŽPVPæ¨¡å¼
   ws = new WebSocket(`${Config.wsUrl}/${user.value.id}/${roomId}`);
@@ -419,6 +567,14 @@ const initGame = async (data: Record<string, any>) => {
       const now = Date.now();
       const toMove = game.value.round ? 'black' : 'white';
       startTurn(timeRt, toMove, now);
+      // Fetch fresh room info to populate visitor id and player panel
+      api.getGameInfo(roomId)
+        .then((latest: any) => {
+          if (latest && latest.success) {
+            updatePlayerPanelFromData(latest.data).catch(() => {});
+          }
+        })
+        .catch(() => {});
     } else if (data.type === "stoneRemovalStart") {
       enterStoneRemoval();
     } else if (data.type === "stoneRemovalExit") {
@@ -447,7 +603,8 @@ const initGame = async (data: Record<string, any>) => {
       finishMessage.value = winner === 'black' ? (lang.value.text.room.game_over_side_win as string).replace('{side}', lang.value.text.room.side_black) : (lang.value.text.room.game_over_side_win as string).replace('{side}', lang.value.text.room.side_white);
       finishVisible.value = true;
     } else if (data.type === "updateRoomInfo") {
-      store.dispatch("game/updateRoomInfo", data.data);
+      // Update simple reactive info and refresh player panel
+      updatePlayerPanelFromData(data.data).catch(() => {});
     } else if (data.type === "sendMessage") {
       barrage.value.sendBullet(data.data.message, 1);
     } else if (data.type === "backChessApply") {
@@ -987,6 +1144,8 @@ onMounted(() => {
 
 onUnmounted(() => {
   document.removeEventListener('keydown', handleKeydown);
+  document.removeEventListener('mousemove', onSummaryMouseMove);
+  document.removeEventListener('mouseup', onSummaryMouseUp);
 });
 
 const downloadSGF = () => {
@@ -1046,9 +1205,10 @@ const showScoreDetail = () => {
 @use "@/assets/styles/score-removal.scss" as *;
 
 .score-estimate-summary {
-  margin: 0 6vw 1rem 6vw;
-  display: flex;
-  justify-content: center;
+  position: absolute;
+  z-index: 50;
+  cursor: move;
+  user-select: none;
 }
 
 .estimate-table {

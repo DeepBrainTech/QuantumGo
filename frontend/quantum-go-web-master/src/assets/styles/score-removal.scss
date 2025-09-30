@@ -50,6 +50,8 @@
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
   color: #6E4C41;
   font-size: 16px; /* match PVP toolbar */
+  position: relative; /* ensure z-index takes effect if siblings overlap */
+  z-index: 5;
 }
 
 .stone-removal-bar .title { font-weight: 700; }

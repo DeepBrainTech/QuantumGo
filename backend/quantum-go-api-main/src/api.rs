@@ -49,6 +49,24 @@ pub struct GetLeaderboardRequest {
     limit: Option<i32>,
 }
 
+#[derive(Deserialize)]
+pub struct GetUserProfileRequest {
+    user_id: Uuid,
+    model: i32,
+}
+
+#[derive(serde::Serialize)]
+pub struct UserProfileResponse {
+    pub user_id: Uuid,
+    pub username: String,
+    pub rating: f64,
+    pub rd: f64,
+    pub games_played: i32,
+    pub wins: i32,
+    pub losses: i32,
+    pub draws: i32,
+}
+
 #[axum::debug_handler]
 pub async fn register(
     State(state): State<crate::ws::AppState>,
@@ -180,6 +198,49 @@ pub async fn ai_genmove(
             Json(serde_json::json!({ "error": format!("katago error: {}", err) })),
         )),
     }
+}
+
+#[axum::debug_handler]
+pub async fn get_user_profile(
+    State(state): State<crate::ws::AppState>,
+    Json(req): Json<GetUserProfileRequest>,
+    ) -> ApiResult<UserProfileResponse> {
+    // fetch user
+    let user = match state.db.get_user_by_user_id(req.user_id).await {
+        Ok(u) => u,
+        Err(_) => {
+            return Err((
+                StatusCode::NOT_FOUND,
+                Json(serde_json::json!({ "error": "User not found" })),
+            ));
+        }
+    };
+    // fetch ranking (create if missing)
+    let ranking = match state.db.get_user_ranking(&user.user_id, req.model).await {
+        Ok(r) => r,
+        Err(_) => match state.db.create_user_ranking(&user.user_id, req.model).await {
+            Ok(r) => r,
+            Err(e) => {
+                return Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({ "error": format!("Failed to get ranking: {}", e) })),
+                ));
+            }
+        },
+    };
+
+    let resp = UserProfileResponse {
+        user_id: user.user_id,
+        username: user.username,
+        rating: ranking.rating,
+        rd: ranking.rd,
+        games_played: ranking.games_played,
+        wins: ranking.wins,
+        losses: ranking.losses,
+        draws: ranking.draws,
+    };
+
+    Ok((StatusCode::OK, Json(resp)))
 }
 
 #[axum::debug_handler]

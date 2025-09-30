@@ -215,7 +215,73 @@ $secondary-color: rgba(235, 137, 79, 0.7);
         }
       }
 
-      .reverse .avatar {
+      /* removed empty rule */
+    }
+  }
+
+  // Player info panel between left buttons and boards
+  .player-panel {
+    /* Render in the gap without affecting layout */
+    position: absolute;
+    left: calc(120px + 2.5vw); /* width of .operation + gap */
+    top: 22vh;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end; /* anchor cards on the right, grow to the left */
+    gap: 12px;
+    width: 230px; /* allow active card to extend a bit */
+    user-select: none;
+    pointer-events: auto;
+  }
+
+  .player-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    border-radius: 16px;
+    background: rgba(235, 137, 79, 0.15);
+    border: 1px solid rgba(235, 137, 79, 0.25);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+    color: $text-color;
+    transition: transform .2s ease, box-shadow .2s ease, background .2s ease;
+    transform-origin: right center; /* keep right edge fixed */
+    width: 200px; /* keep a fixed width; scale from the right */
+
+    &.active {
+      background: rgba(235, 137, 79, 0.25);
+      transform: scaleX(1.1); /* visually extends to the left */
+      box-shadow: 0 6px 16px rgba(0,0,0,0.08);
+    }
+
+    .stone {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      box-shadow: inset 0 1px 2px rgba(0,0,0,0.15), 0 1px 2px rgba(0,0,0,0.08);
+      &.black { background: #2c2c2c; }
+      &.white { background: #f8f8f8; border: 1px solid #e0e0e0; }
+    }
+
+    .meta {
+      display: flex;
+      flex-direction: column;
+      line-height: 1.1;
+      .name {
+        font-weight: 700;
+        font-size: 1rem;
+        max-width: 14ch;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .rating {
+        font-size: .9rem;
+        opacity: .9;
+      }
+      .rank {
+        font-size: .85rem;
+        opacity: .8;
       }
     }
   }

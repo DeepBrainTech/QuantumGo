@@ -61,6 +61,12 @@ class Api {
     return this.request("/getLeaderboard", data);
   }
 
+  // Fetch single user's profile (username + rating/RD for a model)
+  public async getUserProfile(user_id: string, model: number): Promise<Response> {
+    const data = { user_id, model } as any;
+    return this.request("/getUserProfile", data);
+  }
+
   // Ask backend KataGo to generate a move for current game state
   public async aiGenmove(payload: {
     board_size: number,

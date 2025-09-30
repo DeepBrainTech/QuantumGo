@@ -55,6 +55,25 @@ async fn send_start_game_message(sender: &WsSender) -> Result<(), Box<dyn Error 
     Ok(())
 }
 
+// Proactively push updated owner/visitor info to a client
+async fn send_update_room_info(
+    sender: &WsSender,
+    owner_id: Uuid,
+    visitor_id: Option<Uuid>,
+) -> Result<(), Box<dyn Error + Send + Sync>> {
+    let payload = serde_json::json!({
+        "owner_id": owner_id,
+        "visitor_id": visitor_id,
+    });
+    let msg = Data::<serde_json::Value> { mode: "updateRoomInfo".to_string(), data: payload };
+    sender
+        .lock()
+        .await
+        .send(Message::Text(serde_json::to_string(&msg)?.into()))
+        .await?;
+    Ok(())
+}
+
 async fn handle_user_connection(
     ws_sender: &mut WsSender,
     room: &mut Room,
@@ -73,6 +92,8 @@ async fn handle_user_connection(
             // 放宽处理：数据库更新失败不阻断连接，继续开始游戏
             info!("Failed to update room visitor: {}", err);
         }
+
+        
 
         // Send start game message to both players
         if let (Some(user1), Some(user2)) = (&room.user1, &room.user2) {
@@ -161,6 +182,7 @@ async fn update_room_visitor(
     match &result {
         Ok(updated_room) => {
             info!("Successfully updated room visitor: {:?}", updated_room);
+            // Note: WS broadcast is handled in caller to avoid nested locks.
         }
         Err(err) => {
             info!("Failed to update room visitor: {} - Error details: {:?}", err, err);

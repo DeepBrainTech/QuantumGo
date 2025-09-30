@@ -70,6 +70,7 @@ async fn main() {
         .route("/userRegister", post(api::register))
         .route("/getUserInfo", post(api::login))
         .route("/getLeaderboard", post(api::get_leaderboard))
+        .route("/getUserProfile", post(api::get_user_profile))
         .route("/ai/genmove", post(api::ai_genmove))
         .route("/ai/genmove_dual", post(api::ai_genmove_dual))
         .route("/ai/score_estimate", post(api::score_estimate))
