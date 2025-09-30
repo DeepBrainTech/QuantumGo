@@ -12,28 +12,36 @@ let putAudio: HTMLAudioElement | null = null;
 let startAudio: HTMLAudioElement | null = null;
 let bgmAudio: HTMLAudioElement | null = null;
 
-let bgmEnabled = true;
+// Sound switches
+let masterMuted = false;
+let sfxEnabled = true; // stone placement, start sound
+let bgmEnabled = true; // background music on/off
+
+// Volumes (0..1)
+let sfxVolume = 0.6;
+let startVolume = 0.8;
+let bgmVolume = 0.25;
 
 function ensureInit() {
   if (!putAudio) {
     putAudio = new Audio(putSrc);
-    putAudio.volume = 0.6;
+    putAudio.volume = sfxVolume;
   }
   if (!startAudio) {
     startAudio = new Audio(startSrc);
-    startAudio.volume = 0.8;
+    startAudio.volume = startVolume;
   }
   if (!bgmAudio) {
     bgmAudio = new Audio(bgmSrc);
     bgmAudio.loop = true;
-    bgmAudio.volume = 0.25;
+    bgmAudio.volume = bgmVolume;
   }
 }
 
 export function playPut() {
   ensureInit();
   try {
-    // Always allow put sound
+    if (masterMuted || !sfxEnabled) return;
     putAudio!.currentTime = 0;
     putAudio!.play();
   } catch (_) {
@@ -44,6 +52,7 @@ export function playPut() {
 export function playStart() {
   ensureInit();
   try {
+    if (masterMuted || !sfxEnabled) return;
     startAudio!.currentTime = 0;
     startAudio!.play();
   } catch (_) {
@@ -53,7 +62,7 @@ export function playStart() {
 
 export function startBgm() {
   ensureInit();
-  if (!bgmEnabled) return;
+  if (!bgmEnabled || masterMuted) return;
   try {
     if (bgmAudio!.paused) {
       // resume from last time to avoid overlap
@@ -67,7 +76,7 @@ export function startBgm() {
 // Explicitly restart BGM for a brand-new game
 export function startBgmFromBeginning() {
   ensureInit();
-  if (!bgmEnabled) return;
+  if (!bgmEnabled || masterMuted) return;
   try {
     if (!bgmAudio!.paused) bgmAudio!.pause();
     bgmAudio!.currentTime = 0;
@@ -95,12 +104,39 @@ export function setBgmEnabled(on: boolean) {
   }
 }
 
+export function setSfxEnabled(on: boolean) {
+  sfxEnabled = on;
+}
+
+export function setMasterMuted(muted: boolean) {
+  masterMuted = muted;
+  if (muted) stopBgm();
+}
+
+export function setBgmVolume(v: number) {
+  bgmVolume = Math.max(0, Math.min(1, v));
+  ensureInit();
+  if (bgmAudio) bgmAudio.volume = bgmVolume;
+}
+
+export function setSfxVolume(v: number) {
+  sfxVolume = Math.max(0, Math.min(1, v));
+  startVolume = sfxVolume; // keep same scale for start sound
+  ensureInit();
+  if (putAudio) putAudio.volume = sfxVolume;
+  if (startAudio) startAudio.volume = startVolume;
+}
+
 // Call to keep bgm consistent when game status or setting changes
 export function syncBgm(status: "waiting" | "playing" | "finished", enabled: boolean) {
   setBgmEnabled(enabled);
-  if (status === "playing" && enabled) {
+  if (status === "playing" && enabled && !masterMuted) {
     startBgm();
   } else {
     stopBgm();
   }
+}
+
+export function getState() {
+  return { masterMuted, sfxEnabled, bgmEnabled, sfxVolume, bgmVolume };
 }

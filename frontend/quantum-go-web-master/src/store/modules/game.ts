@@ -38,7 +38,13 @@ const state = () => ({
   // Number of records applied on board for preview (0..records.length)
   reviewIndex: 0 as number,
   // Background music toggle (only affects chinese-ancient music)
-  bgmEnabled: true as boolean
+  bgmEnabled: true as boolean,
+  // Master mute and SFX controls
+  masterMuted: false as boolean,
+  sfxEnabled: true as boolean,
+  // Volumes (0..1)
+  bgmVolume: 0.25 as number,
+  sfxVolume: 0.6 as number
 });
 
 const mutations = {
@@ -82,6 +88,27 @@ const mutations = {
   setBgmEnabled(state: any, on: boolean) {
     state.bgmEnabled = on;
     sound.syncBgm(state.status, state.bgmEnabled);
+  },
+
+  setMasterMuted(state: any, muted: boolean) {
+    state.masterMuted = muted;
+    sound.setMasterMuted(muted);
+    sound.syncBgm(state.status, state.bgmEnabled);
+  },
+
+  setSfxEnabled(state: any, on: boolean) {
+    state.sfxEnabled = on;
+    sound.setSfxEnabled(on);
+  },
+
+  setBgmVolume(state: any, v: number) {
+    state.bgmVolume = Math.max(0, Math.min(1, v));
+    sound.setBgmVolume(state.bgmVolume);
+  },
+
+  setSfxVolume(state: any, v: number) {
+    state.sfxVolume = Math.max(0, Math.min(1, v));
+    sound.setSfxVolume(state.sfxVolume);
   },
 
   setChess(state: any, chessman1: Chessman) {

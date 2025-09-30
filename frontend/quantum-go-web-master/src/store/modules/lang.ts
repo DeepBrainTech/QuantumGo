@@ -38,7 +38,11 @@ const text = {
       share_website: "Click on the link to experience online quantum Go battles: ",
       share_battle: "Click on the link to play quantum Go with me now: ",
       copy_success: "Already copied to clipboard.",
-      login: "Login"
+      login: "Login",     
+      mute_all: "Mute all",
+      unmute_all: "Unmute all",
+      sfx: "Move",
+      bgm: "BGM"
     },
     common: {
       login_required: "Log in to continue.",
@@ -188,7 +192,11 @@ const text = {
       share_website: "点击链接体验在线量子围棋：",
       share_battle: "点击链接与我对弈量子围棋：",
       copy_success: "已复制到剪贴板",
-      login: "登录"
+      login: "登录",
+      mute_all: "全部静音",
+      unmute_all: "取消静音",
+      sfx: "落子音效",
+      bgm: "背景音乐"
     },
     common: {
       login_required: "需要登录后继续。",
@@ -331,3 +339,7 @@ const text = {
     }
   }
 };
+
+
+
+
