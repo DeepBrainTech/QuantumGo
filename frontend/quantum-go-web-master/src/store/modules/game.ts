@@ -217,6 +217,8 @@ const actions = {
     // Sync BGM/start sound when we receive server state
     if (state.status === "playing") {
       sound.playStart();
+      // When second player joins and game enters playing, restart BGM
+      sound.startBgmFromBeginning();
     }
     sound.syncBgm(state.status, state.bgmEnabled);
     const isOwner = owner_id === rootState.user.id;

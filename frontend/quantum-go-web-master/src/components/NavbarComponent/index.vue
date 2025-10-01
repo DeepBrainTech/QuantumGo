@@ -54,11 +54,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, onMounted, onBeforeUnmount } from "vue";
 import { useStore } from "vuex";
 import { ElMessage, ElDropdown, ElDropdownMenu, ElDropdownItem, ElPopover, ElSlider } from "element-plus";
 import { copyText } from "@/utils/tools";
 import { useRouter } from 'vue-router';
+import * as sound from "@/utils/sound";
 
 const store = useStore();
 const lang = computed(() => store.state.lang);
@@ -124,6 +125,35 @@ const sfxVolumeProxy = computed({
   get: () => sfxVolume.value,
   set: (v: number) => store.commit('game/setSfxVolume', (v || 0) / 100),
 });
+
+// Attempt to unlock autoplay restrictions on first user gesture
+let unlocked = false;
+const tryUnlockAudio = () => {
+  if (unlocked) return;
+  const status = store.state.game.status;
+  const enabled = store.state.game.bgmEnabled;
+  const mutedAll = store.state.game.masterMuted;
+  if (status === 'playing' && enabled && !mutedAll) {
+    try {
+      sound.startBgm();
+    } catch (_) {
+      // ignore
+    }
+  }
+  unlocked = true;
+  window.removeEventListener('pointerdown', tryUnlockAudio);
+  window.removeEventListener('keydown', tryUnlockAudio);
+};
+
+onMounted(() => {
+  window.addEventListener('pointerdown', tryUnlockAudio, { once: false });
+  window.addEventListener('keydown', tryUnlockAudio, { once: false });
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener('pointerdown', tryUnlockAudio);
+  window.removeEventListener('keydown', tryUnlockAudio);
+});
 </script>
 
 <style scoped lang="scss">  
@@ -149,7 +179,6 @@ const sfxVolumeProxy = computed({
   -moz-appearance: none !important;
 }
 </style>
-
 
 
 
