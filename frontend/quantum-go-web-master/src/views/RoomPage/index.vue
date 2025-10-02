@@ -1,7 +1,7 @@
 <template>
   <div class="main">
     <!-- Operation panel: left-side controls -->
-    <div v-if="game.status === 'playing' || game.status === 'waiting'" class="operation">
+    <div v-if="!game.reviewMode && (game.status === 'playing' || game.status === 'waiting')" class="operation">
       <div class="item btn" :class="{ disabled: stoneRemovalPhase }" @click="!stoneRemovalPhase && passChess()">{{ lang.text.room.pass }}</div>
       <div class="item btn" :class="{ disabled: stoneRemovalPhase }" @click="!stoneRemovalPhase && backChess()">{{ lang.text.room.takeback }}</div>
       <!--      <div class="btn">{{ lang.text.room.draw }}</div>-->
@@ -28,7 +28,7 @@
     </div> <!-- end .operation -->
 
     <!-- Player info panel between buttons and boards -->
-    <div class="player-panel" v-if="game.status === 'playing' || game.status === 'waiting'">
+    <div class="player-panel" v-if="!game.reviewMode && (game.status === 'playing' || game.status === 'waiting')">
       <div class="player-card black" :class="{ active: sideToMove === 'black' }">
         <div class="stone black"></div>
         <div class="meta">
@@ -108,13 +108,16 @@
       </div>
       </div>
 
-      <div class="review-bar" v-if="(game.status === 'playing' || game.status === 'waiting') && game.records">
+      <div class="review-bar" v-if="(game.reviewMode || game.status === 'finished') && game.records">
         <div class="left">
           <button class="rv-btn" @click="gotoStart" :disabled="currentMove === 0">&laquo;&laquo;&laquo;</button>
           <button class="rv-btn" @click="step(-5)" :disabled="currentMove === 0">&laquo;&laquo;</button>
           <button class="rv-btn" @click="step(-1)" :disabled="currentMove === 0">&laquo;</button>
         </div>
-        <div class="center">{{ displayMove }} / {{ totalMoves }}</div>
+        <div class="center" style="flex:1; padding: 0 12px;">
+          <el-slider :min="0" :max="totalMoves" :step="1" v-model="reviewSlider" @change="onSliderChange" />
+          <div style="text-align:center; margin-top:4px;">{{ displayMove }} / {{ totalMoves }}</div>
+        </div>
         <div class="right">
           <button class="rv-btn" @click="step(1)" :disabled="currentMove === totalMoves">&raquo;</button>
           <button class="rv-btn" @click="step(5)" :disabled="currentMove === totalMoves">&raquo;&raquo;</button>
@@ -123,7 +126,7 @@
       </div>
 
       <!-- Govariants-style dual clocks (styled with existing UI circle) -->
-      <div class="countdown-slot">
+      <div class="countdown-slot" v-if="!game.reviewMode && (game.status === 'playing' || game.status === 'waiting')">
         <div class="countdown-inner" :class="{ visible: true }" style="display:flex; gap: 24px; align-items:center;">
           <div style="display:flex; flex-direction:column; align-items:center;">
             <el-progress type="circle" :width="100" striped striped-flow :percentage="progressBlack" :color="progressColors" :format="() => blackClock" />
@@ -135,7 +138,7 @@
           </div>
         </div>
       </div>
-      <div class="input-box">
+      <div class="input-box" v-if="!game.reviewMode && (game.status === 'playing' || game.status === 'waiting')">
         <input class="input" v-model="input" type="text" :placeholder="lang.text.room.chat_placeholder" @keyup.enter="sendMessage" />
       </div>
     </div>
@@ -218,11 +221,11 @@
 import BoardComponent from "@/components/BoardComponent/index.vue";
 import BarrageComponent from "@/components/BarrageComponent/index.vue";
 import { useStore } from "vuex";
-import { computed, onMounted, onUnmounted, ref, nextTick } from "vue";
+import { computed, onMounted, onUnmounted, ref, nextTick, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import api from "@/utils/api";
 import * as sound from "@/utils/sound";
-import { ElMessage, ElMessageBox, ElProgress, ElLoading, ElDialog, ElButton } from "element-plus";
+import { ElMessage, ElMessageBox, ElProgress, ElLoading, ElDialog, ElButton, ElSlider } from "element-plus";
 import { Chessman } from "@/utils/types";
 import { canPutChess } from "@/utils/chess";
 import { calculateGoResult } from "@/utils/chess2";
@@ -462,14 +465,15 @@ onMounted(async () => {
     return;
   }
   const data = res.data;
-  if (data.status === "finish") {
+  const reviewModeRequested = route.query.review === '1' || route.query.review === 'true';
+  if (data.status === "finished" && !reviewModeRequested) {
     redirectToHomeWithMessage(lang.value.text.join.room_finished);
   } else if (data.status === "playing") {
     if (user.value.id !== data.owner_id && user.value.id !== data.visitor_id) {
       redirectToHomeWithMessage(lang.value.text.join.room_playing);
     }
   }
-  await initGame(res.data);
+  await initGame(res.data, reviewModeRequested);
 });
 onMounted(() => {
   ws?.close();
@@ -483,7 +487,7 @@ onMounted(() => {
   });
 });
 
-const initGame = async (data: Record<string, any>) => {
+const initGame = async (data: Record<string, any>, reviewModeRequested: boolean = false) => {
   await store.dispatch("game/setGameInfo", data);
   // re-init time runtime from backend-provided config, if any
   timeRt = initRuntime((store.state.game.timeControl ?? null) as any);
@@ -496,8 +500,9 @@ const initGame = async (data: Record<string, any>) => {
   // Populate player panel from backend user ids
   await updatePlayerPanelFromData(data);
   
-  // å»ºç«‹WebSocketè¿žæŽ¥ç”¨äºŽPVPæ¨¡å¼
-  ws = new WebSocket(`${Config.wsUrl}/${user.value.id}/${roomId}`);
+  // Only create WebSocket for live play
+  if (!reviewModeRequested && data.status !== 'finished') {
+    ws = new WebSocket(`${Config.wsUrl}/${user.value.id}/${roomId}`);
   // ws = io(`ws://${window.location.hostname}/ws/${user.value.id}/${roomId}`);
   ws.onopen = () => {
     console.log("WebSocket connected successfully");
@@ -621,6 +626,13 @@ const initGame = async (data: Record<string, any>) => {
       }
     }
   };
+  }
+
+  // Enable review mode for finished/review requests
+  if (reviewModeRequested || data.status === 'finished') {
+    store.commit('game/setReviewMode', true);
+    store.commit('game/setReviewIndex', store.state.game.records.length);
+  }
 };
 
 const putChess = async (position: string) => {
@@ -1094,6 +1106,15 @@ const totalMoves = computed(() => game.value.records?.length || 0);
 const currentMove = computed(() => game.value.reviewIndex || 0);
 const displayMove = computed(() => Math.min(currentMove.value, totalMoves.value));
 
+// Slider for review mode
+const reviewSlider = ref(0);
+watch(currentMove, (nv) => { reviewSlider.value = nv; });
+const onSliderChange = (val: number | number[]) => {
+  const v = Array.isArray(val) ? (val[0] ?? 0) : (val ?? 0);
+  const target = Math.max(0, Math.min(v, totalMoves.value));
+  store.dispatch('game/reviewGoto', target);
+};
+
 const gotoStart = () => store.dispatch('game/reviewGoto', 0);
 const gotoEnd = () => store.dispatch('game/reviewGoto', totalMoves.value);
 const step = (delta: number) => {
@@ -1104,7 +1125,9 @@ const step = (delta: number) => {
 // -------- Keyboard controls --------
 const handleKeydown = (event: KeyboardEvent) => {
   // åªåœ¨æ¸¸æˆè¿›è¡Œä¸­ä¸”æœ‰è®°å½•æ—¶å“åº”é”®ç›˜äº‹ä»¶
-  if ((game.value.status !== 'playing' && game.value.status !== 'waiting') || !game.value.records) return;
+  const isLive = (game.value.status === 'playing' || game.value.status === 'waiting');
+  const inReview = (game.value.reviewMode || game.value.status === 'finished');
+  if ((!isLive && !inReview) || !game.value.records) return;
   
   // é˜²æ­¢åœ¨è¾“å…¥æ¡†ä¸­è§¦å‘
   if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;

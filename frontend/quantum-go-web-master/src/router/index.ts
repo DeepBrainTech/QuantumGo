@@ -4,6 +4,8 @@ import RoomPage from "../views/RoomPage/index.vue";
 import AIPage from "../views/AIPage/index.vue";
 import LoginPage from "../views/LoginPage/index.vue";
 import LeaderboardPage from "../views/LeaderboardPage/index.vue";
+import LobbyPage from "../views/LobbyPage/index.vue";
+import RecentPage from "../views/RecentPage/index.vue";
 
 const routes: Array<RouteRecordRaw> = [
   {
@@ -25,6 +27,16 @@ const routes: Array<RouteRecordRaw> = [
     path: "/leaderboard",
     name: "Leaderboard",
     component: LeaderboardPage
+  },
+  {
+    path: "/recent",
+    name: "Recent",
+    component: RecentPage
+  },
+  {
+    path: "/lobby",
+    name: "Lobby",
+    component: LobbyPage
   },
   {
     path: "/ai/:id",

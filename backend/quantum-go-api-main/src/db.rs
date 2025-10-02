@@ -1,4 +1,4 @@
-use crate::entity::{RoomInfo, User, UserRanking, LeaderboardEntry};
+use crate::entity::{RoomInfo, RoomSummary, User, UserRanking, LeaderboardEntry};
 use bcrypt::{DEFAULT_COST, hash, verify};
 use sqlx::postgres::PgPoolOptions;
 use sqlx::{Error, PgPool};
@@ -108,6 +108,65 @@ impl Database {
                 .execute(pool)
                 .await?;
             println!("time_control column added successfully");
+        }
+
+        // Ensure lobby visibility columns exist (Phase 1)
+        let result_is_public = sqlx::query(
+            "SELECT column_name FROM information_schema.columns WHERE table_name = 'room_infos' AND column_name = 'is_public'"
+        )
+        .fetch_optional(pool)
+        .await?;
+        if result_is_public.is_none() {
+            println!("Adding is_public column to room_infos table...");
+            sqlx::query("ALTER TABLE room_infos ADD COLUMN is_public BOOLEAN NOT NULL DEFAULT TRUE")
+                .execute(pool)
+                .await?;
+        }
+        let result_is_listed = sqlx::query(
+            "SELECT column_name FROM information_schema.columns WHERE table_name = 'room_infos' AND column_name = 'is_listed'"
+        )
+        .fetch_optional(pool)
+        .await?;
+        if result_is_listed.is_none() {
+            println!("Adding is_listed column to room_infos table...");
+            sqlx::query("ALTER TABLE room_infos ADD COLUMN is_listed BOOLEAN NOT NULL DEFAULT TRUE")
+                .execute(pool)
+                .await?;
+        }
+        let result_allow_spectate = sqlx::query(
+            "SELECT column_name FROM information_schema.columns WHERE table_name = 'room_infos' AND column_name = 'allow_spectate'"
+        )
+        .fetch_optional(pool)
+        .await?;
+        if result_allow_spectate.is_none() {
+            println!("Adding allow_spectate column to room_infos table...");
+            sqlx::query("ALTER TABLE room_infos ADD COLUMN allow_spectate BOOLEAN NOT NULL DEFAULT TRUE")
+                .execute(pool)
+                .await?;
+        }
+        let result_created_at = sqlx::query(
+            "SELECT column_name FROM information_schema.columns WHERE table_name = 'room_infos' AND column_name = 'created_at'"
+        )
+        .fetch_optional(pool)
+        .await?;
+        if result_created_at.is_none() {
+            println!("Adding created_at column to room_infos table...");
+            sqlx::query("ALTER TABLE room_infos ADD COLUMN created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()")
+                .execute(pool)
+                .await?;
+        }
+
+        // Ensure last_activity_at column exists
+        let result_last_activity = sqlx::query(
+            "SELECT column_name FROM information_schema.columns WHERE table_name = 'room_infos' AND column_name = 'last_activity_at'"
+        )
+        .fetch_optional(pool)
+        .await?;
+        if result_last_activity.is_none() {
+            println!("Adding last_activity_at column to room_infos table...");
+            sqlx::query("ALTER TABLE room_infos ADD COLUMN last_activity_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()")
+                .execute(pool)
+                .await?;
         }
 
         // Create user_rankings table
@@ -221,8 +280,10 @@ impl Database {
         sqlx::query_as::<_, RoomInfo>(
             r#"
             INSERT INTO room_infos (
-                room_id, owner_id, visitor_id, status, round, winner, board, countdown, moves, black_lost, white_lost, model, chessman_records, phase, komi, time_control
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING *
+                room_id, owner_id, visitor_id, status, round, winner, board, countdown, moves, black_lost, white_lost, model, chessman_records, phase, komi, time_control, is_public, is_listed, allow_spectate
+            ) VALUES (
+                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19
+            ) RETURNING *
             "#,
         )
         .bind(room_info.room_id)
@@ -241,8 +302,76 @@ impl Database {
         .bind(&room_info.phase)
         .bind(room_info.komi as f64)
         .bind(&room_info.time_control)
+        .bind(room_info.is_public)
+        .bind(room_info.is_listed)
+        .bind(room_info.allow_spectate)
         .fetch_one(&self.pool)
         .await
+    }
+
+    pub async fn list_public_waiting_rooms(&self, model: Option<i32>, limit: i64, offset: i64) -> Result<Vec<RoomInfo>, Error> {
+        // Backward compatibility (not used by API anymore). Kept in case of future reuse.
+        // Only recent rooms (last 24h), without a visitor yet
+        let base = "SELECT * FROM room_infos WHERE status = 'waiting' AND is_public = TRUE AND is_listed = TRUE AND visitor_id IS NULL AND created_at IS NOT NULL AND created_at >= NOW() - INTERVAL '24 hours'";
+        if let Some(m) = model {
+            let query = format!("{} AND model = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3", base);
+            sqlx::query_as::<_, RoomInfo>(&query)
+                .bind(m)
+                .bind(limit)
+                .bind(offset)
+                .fetch_all(&self.pool)
+                .await
+        } else {
+            let query = format!("{} ORDER BY created_at DESC LIMIT $1 OFFSET $2", base);
+            sqlx::query_as::<_, RoomInfo>(&query)
+                .bind(limit)
+                .bind(offset)
+                .fetch_all(&self.pool)
+                .await
+        }
+    }
+
+    pub async fn list_public_waiting_rooms_summary(&self, model: Option<i32>, limit: i64, offset: i64) -> Result<Vec<RoomSummary>, Error> {
+        // Join users to fetch owner username; filter to recent and open rooms
+        if let Some(m) = model {
+            sqlx::query_as::<_, RoomSummary>(
+                r#"
+                SELECT r.room_id, r.owner_id, u.username AS owner_username, r.status, r.model, r.created_at
+                FROM room_infos r
+                JOIN users u ON u.user_id = r.owner_id
+                WHERE r.status = 'waiting'
+                  AND r.is_public = TRUE AND r.is_listed = TRUE
+                  AND r.visitor_id IS NULL
+                  AND r.created_at IS NOT NULL AND r.created_at >= NOW() - INTERVAL '24 hours'
+                  AND r.model = $1
+                ORDER BY r.created_at DESC
+                LIMIT $2 OFFSET $3
+                "#
+            )
+            .bind(m)
+            .bind(limit)
+            .bind(offset)
+            .fetch_all(&self.pool)
+            .await
+        } else {
+            sqlx::query_as::<_, RoomSummary>(
+                r#"
+                SELECT r.room_id, r.owner_id, u.username AS owner_username, r.status, r.model, r.created_at
+                FROM room_infos r
+                JOIN users u ON u.user_id = r.owner_id
+                WHERE r.status = 'waiting'
+                  AND r.is_public = TRUE AND r.is_listed = TRUE
+                  AND r.visitor_id IS NULL
+                  AND r.created_at IS NOT NULL AND r.created_at >= NOW() - INTERVAL '24 hours'
+                ORDER BY r.created_at DESC
+                LIMIT $1 OFFSET $2
+                "#
+            )
+            .bind(limit)
+            .bind(offset)
+            .fetch_all(&self.pool)
+            .await
+        }
     }
 
     pub async fn get_room_by_room_id(&self, room_id: Uuid) -> Result<RoomInfo, Error> {
@@ -268,6 +397,7 @@ impl Database {
                 model = $10,
                 chessman_records = $11,
                 phase = $12,
+                last_activity_at = NOW(),
                 komi = $13,
                 time_control = $14
             WHERE id = $15 RETURNING *
@@ -298,7 +428,8 @@ impl Database {
             r#"
             UPDATE room_infos SET
                 visitor_id = $1,
-                status = $2
+                status = $2,
+                last_activity_at = NOW()
             WHERE id = $3 RETURNING *
             "#,
         )
@@ -307,6 +438,60 @@ impl Database {
         .bind(id)
         .fetch_one(&self.pool)
         .await
+    }
+
+    // Mark rooms as finished if no activity for more than 24 hours
+    pub async fn finish_expired_rooms_24h(&self) -> Result<i64, Error> {
+        let rows = sqlx::query(
+            r#"
+            UPDATE room_infos
+            SET status = 'finished'
+            WHERE status <> 'finished'
+              AND COALESCE(last_activity_at, created_at) < NOW() - INTERVAL '24 hours'
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+        Ok(rows.rows_affected() as i64)
+    }
+
+    // List recent rooms for a user (owner or visitor)
+    pub async fn list_recent_rooms(&self, user_id: Uuid, status: Option<&str>, limit: i64, offset: i64) -> Result<Vec<crate::entity::RecentRoomSummary>, Error> {
+        let base = r#"
+            SELECT r.room_id,
+                   r.owner_id,
+                   ou.username AS owner_username,
+                   r.visitor_id,
+                   vu.username AS visitor_username,
+                   r.status,
+                   r.model,
+                   r.moves,
+                   r.winner,
+                   r.created_at,
+                   r.last_activity_at
+            FROM room_infos r
+            JOIN users ou ON ou.user_id = r.owner_id
+            LEFT JOIN users vu ON r.visitor_id IS NOT NULL AND vu.user_id = r.visitor_id
+            WHERE (r.owner_id = $1 OR r.visitor_id = $1)
+        "#;
+        if let Some(s) = status {
+            let query = format!("{} AND r.status = $2 ORDER BY r.last_activity_at DESC LIMIT $3 OFFSET $4", base);
+            sqlx::query_as::<_, crate::entity::RecentRoomSummary>(&query)
+                .bind(user_id)
+                .bind(s)
+                .bind(limit)
+                .bind(offset)
+                .fetch_all(&self.pool)
+                .await
+        } else {
+            let query = format!("{} ORDER BY r.last_activity_at DESC LIMIT $2 OFFSET $3", base);
+            sqlx::query_as::<_, crate::entity::RecentRoomSummary>(&query)
+                .bind(user_id)
+                .bind(limit)
+                .bind(offset)
+                .fetch_all(&self.pool)
+                .await
+        }
     }
     
 

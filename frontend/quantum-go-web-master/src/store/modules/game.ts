@@ -49,7 +49,7 @@ const state = () => ({
 
 const mutations = {
   setRoomId(state: any, id: string) {
-    state.id = id;
+    state.roomId = id;
   },
 
   setStatus(state: any, status: "waiting" | "playing" | "finished") {

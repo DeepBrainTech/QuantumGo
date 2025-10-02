@@ -329,6 +329,11 @@ async fn update_game_state(
             phase: room_info.phase.clone(),
             komi: room_info.komi,
             time_control: room_info.time_control.clone(),
+            is_public: room_info.is_public,
+            is_listed: room_info.is_listed,
+            allow_spectate: room_info.allow_spectate,
+            created_at: room_info.created_at,
+            last_activity_at: room_info.last_activity_at,
         })
         .await
 }
@@ -375,6 +380,11 @@ async fn update_winner(
             phase: room_info.phase.clone(),
             komi: room_info.komi,
             time_control: room_info.time_control.clone(),
+            is_public: room_info.is_public,
+            is_listed: room_info.is_listed,
+            allow_spectate: room_info.allow_spectate,
+            created_at: room_info.created_at,
+            last_activity_at: room_info.last_activity_at,
         })
         .await?;
 

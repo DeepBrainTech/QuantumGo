@@ -35,6 +35,40 @@ pub struct RoomInfo {
     pub komi: f64,
     // Govariants-style time control configuration (JSON), optional
     pub time_control: Option<serde_json::Value>,
+    // Lobby visibility (Phase 1)
+    pub is_public: bool,
+    pub is_listed: bool,
+    pub allow_spectate: bool,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    // Last activity timestamp (room creation, join, or latest move)
+    pub last_activity_at: chrono::DateTime<chrono::Utc>,
+}
+
+// Lightweight lobby summary with host username
+#[derive(Clone, Deserialize, Serialize, FromRow, Debug)]
+pub struct RoomSummary {
+    pub room_id: Uuid,
+    pub owner_id: Uuid,
+    pub owner_username: String,
+    pub status: String,
+    pub model: i32,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+// Recent rooms summary for a particular user (owner or visitor)
+#[derive(Clone, Deserialize, Serialize, FromRow, Debug)]
+pub struct RecentRoomSummary {
+    pub room_id: Uuid,
+    pub owner_id: Uuid,
+    pub owner_username: String,
+    pub visitor_id: Option<Uuid>,
+    pub visitor_username: Option<String>,
+    pub status: String,
+    pub model: i32,
+    pub moves: i32,
+    pub winner: Option<String>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub last_activity_at: chrono::DateTime<chrono::Utc>,
 }
 
 #[derive(Clone, Deserialize, Serialize, FromRow)]

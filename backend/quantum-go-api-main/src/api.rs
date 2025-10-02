@@ -1,4 +1,4 @@
-use crate::entity::{RoomInfo, User, LeaderboardEntry};
+use crate::entity::{RoomInfo, RoomSummary, User, LeaderboardEntry};
 use axum::{Json, extract::State, http::StatusCode};
 use serde::Deserialize;
 use uuid::Uuid;
@@ -36,11 +36,30 @@ pub struct CreateRoomRequest {
     game_mode: Option<String>,
     komi: Option<f64>,
     time_control: Option<serde_json::Value>,
+    // Phase 1 lobby options (optional)
+    is_public: Option<bool>,
+    is_listed: Option<bool>,
+    allow_spectate: Option<bool>,
 }
 
 #[derive(Deserialize)]
 pub struct GetGameInfo {
     room_id: Uuid,
+}
+
+#[derive(Deserialize)]
+pub struct ListRoomsRequest {
+    model: Option<i32>,
+    page: Option<i32>,
+    size: Option<i32>,
+}
+
+#[derive(Deserialize)]
+pub struct RecentRoomsRequest {
+    user_id: Uuid,
+    status: Option<String>, // optional: 'waiting' | 'playing' | 'finished'
+    page: Option<i32>,
+    size: Option<i32>,
 }
 
 #[derive(Deserialize)]
@@ -127,6 +146,11 @@ pub async fn create_room(
         phase,
         komi: req.komi.unwrap_or(7.5),
         time_control: req.time_control,
+        is_public: req.is_public.unwrap_or(true),
+        is_listed: req.is_listed.unwrap_or(true),
+        allow_spectate: req.allow_spectate.unwrap_or(true),
+        created_at: chrono::Utc::now(),
+        last_activity_at: chrono::Utc::now(),
     };
 
     match state.db.create_room(&room_info).await {
@@ -148,6 +172,8 @@ pub async fn get_game_info(
     State(state): State<crate::ws::AppState>,
     Json(req): Json<GetGameInfo>,
 ) -> ApiResult<RoomInfo> {
+    // Auto-finish expired rooms before returning state
+    let _ = state.db.finish_expired_rooms_24h().await;
     match state.db.get_room_by_room_id(req.room_id).await {
         Ok(room_info) => Ok((StatusCode::OK, Json(room_info))),
         Err(_) => Err((
@@ -196,6 +222,48 @@ pub async fn ai_genmove(
         Err(err) => Err((
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({ "error": format!("katago error: {}", err) })),
+        )),
+    }
+}
+
+#[axum::debug_handler]
+pub async fn list_rooms(
+    State(state): State<crate::ws::AppState>,
+    Json(req): Json<ListRoomsRequest>,
+) -> ApiResult<Vec<RoomSummary>> {
+    let page = req.page.unwrap_or(1).max(1) as i64;
+    let size = req.size.unwrap_or(20).clamp(1, 100) as i64;
+    let offset = (page - 1) * size;
+    match state.db.list_public_waiting_rooms_summary(req.model, size, offset).await {
+        Ok(rooms) => Ok((StatusCode::OK, Json(rooms))),
+        Err(err) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": format!("Failed to list rooms: {}", err) })),
+        )),
+    }
+}
+
+#[axum::debug_handler]
+pub async fn recent_rooms(
+    State(state): State<crate::ws::AppState>,
+    Json(req): Json<RecentRoomsRequest>,
+) -> ApiResult<Vec<crate::entity::RecentRoomSummary>> {
+    // Auto-finish expired rooms first
+    let _ = state.db.finish_expired_rooms_24h().await;
+    let page = req.page.unwrap_or(1).max(1) as i64;
+    let size = req.size.unwrap_or(20).clamp(1, 100) as i64;
+    let offset = (page - 1) * size;
+    match state
+        .db
+        .list_recent_rooms(req.user_id, req.status.as_deref(), size, offset)
+        .await
+    {
+        Ok(rooms) => Ok((StatusCode::OK, Json(rooms))),
+        Err(err) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({
+                "error": format!("Failed to list recent rooms: {}", err)
+            })),
         )),
     }
 }

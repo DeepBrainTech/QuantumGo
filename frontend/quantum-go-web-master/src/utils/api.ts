@@ -61,6 +61,27 @@ class Api {
     return this.request("/getLeaderboard", data);
   }
 
+  // Lobby: list public waiting rooms (Phase 1)
+  public async listRooms(params?: { model?: number; page?: number; size?: number }): Promise<Response> {
+    const data: any = {
+      model: params?.model,
+      page: params?.page ?? 1,
+      size: params?.size ?? 20,
+    };
+    return this.request("/lobby/listRooms", data);
+  }
+
+  // Recent rooms for a user (owner or visitor)
+  public async recentRooms(params: { user_id: string; status?: string; page?: number; size?: number }): Promise<Response> {
+    const data: any = {
+      user_id: params.user_id,
+      status: params.status,
+      page: params.page ?? 1,
+      size: params.size ?? 20,
+    };
+    return this.request("/user/recentRooms", data);
+  }
+
   // Fetch single user's profile (username + rating/RD for a model)
   public async getUserProfile(user_id: string, model: number): Promise<Response> {
     const data = { user_id, model } as any;

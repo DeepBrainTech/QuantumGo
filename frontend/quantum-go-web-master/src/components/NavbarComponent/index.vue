@@ -32,6 +32,13 @@
         <!--        <t-icon name="trophy" />-->
         <span>{{ lang.text.navbar.leaderboard }}</span>
       </button>
+      <button class="nav-button" @click="goToRecent" style="position:relative;">
+        <span>{{ lang.text.navbar.recent }}</span>
+        <span v-if="activeCount > 0" class="badge">{{ activeCount }}</span>
+      </button>
+      <button class="nav-button" @click="goToLobby">
+        <span>{{ lang.text.navbar.lobby }}</span>
+      </button>
       <button class="nav-button" @click="handleShare">
         <!--        <t-icon name="share" />-->
         <span>{{ lang.text.navbar.share }}</span>
@@ -54,16 +61,18 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onBeforeUnmount } from "vue";
+import { computed, onMounted, onBeforeUnmount, watch } from "vue";
 import { useStore } from "vuex";
 import { ElMessage, ElDropdown, ElDropdownMenu, ElDropdownItem, ElPopover, ElSlider } from "element-plus";
 import { copyText } from "@/utils/tools";
 import { useRouter } from 'vue-router';
 import * as sound from "@/utils/sound";
+import api from "@/utils/api";
 
 const store = useStore();
 const lang = computed(() => store.state.lang);
 const user = computed(() => store.state.user);
+const game = computed(() => store.state.game);
 const bgmEnabled = computed<boolean>(() => store.state.game.bgmEnabled);
 const masterMuted = computed<boolean>(() => store.state.game.masterMuted);
 const sfxEnabled = computed<boolean>(() => store.state.game.sfxEnabled);
@@ -81,6 +90,12 @@ const changeLanguage = () => {
 
 const goToLeaderboard = () => {
   router.push('/leaderboard');
+};
+const goToRecent = () => {
+  router.push('/recent');
+};
+const goToLobby = () => {
+  router.push('/lobby');
 };
 
 const handleShare = async () => {
@@ -148,11 +163,50 @@ const tryUnlockAudio = () => {
 onMounted(() => {
   window.addEventListener('pointerdown', tryUnlockAudio, { once: false });
   window.addEventListener('keydown', tryUnlockAudio, { once: false });
+  startRecentPolling();
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener('pointerdown', tryUnlockAudio);
   window.removeEventListener('keydown', tryUnlockAudio);
+  stopRecentPolling();
+});
+
+// Recent active rooms badge
+import { ref as vueRef } from 'vue';
+const activeCount = vueRef(0);
+let recentTimer: any = null;
+async function pollRecentOnce() {
+  try {
+    const uid = user.value?.id;
+    if (!uid) { activeCount.value = 0; return; }
+    const res = await api.recentRooms({ user_id: uid, page: 1, size: 50 });
+    if (res.success && Array.isArray(res.data)) {
+      const list = res.data as any[];
+      const norm = (s: any) => (typeof s === 'string' ? s.toLowerCase() : '');
+      // Count strictly playing + waiting; unknown statuses don't count
+      activeCount.value = list.filter(r => {
+        const s = norm(r.status);
+        return s === 'playing' || s === 'waiting';
+      }).length;
+    } else {
+      activeCount.value = 0;
+    }
+  } catch {}
+}
+function startRecentPolling() {
+  stopRecentPolling();
+  pollRecentOnce();
+  recentTimer = setInterval(pollRecentOnce, 5000);
+}
+function stopRecentPolling() {
+  if (recentTimer) clearInterval(recentTimer);
+  recentTimer = null;
+}
+
+// Immediate refresh when game status changes (e.g., starts or finishes)
+watch(() => game.value?.status, () => {
+  pollRecentOnce();
 });
 </script>
 
@@ -180,5 +234,20 @@ onBeforeUnmount(() => {
 }
 </style>
 
-
-
+<style scoped>
+.badge {
+  position: absolute;
+  top: -4px;
+  right: -6px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: #f56c6c;
+  color: #fff;
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+</style>

@@ -35,8 +35,8 @@ export function formatRankText(rating: number, rd: number): string {
   const { value, label } = ratingToContinuousRank(rating);
   const rank = Math.max(0, Math.round(value * 10) / 10);
   const rankDelta = Math.round(rdToRankDelta(rating, rd) * 10) / 10;
-  const suffix = rankDelta > 2 ? ' ?' : '';
-  return `${rank}${label} ± ${rankDelta}${suffix}`;
+  // No uncertainty suffix by default
+  return `${rank}${label} ± ${rankDelta}`;
 }
 
 export function formatRatingAndRank(rating: number, rd: number): { ratingText: string; rankText: string } {
