@@ -125,19 +125,19 @@
         </div>
       </div>
 
-      <!-- Govariants-style dual clocks (styled with existing UI circle) -->
-      <div class="countdown-slot" v-if="!game.reviewMode && (game.status === 'playing' || game.status === 'waiting')">
-        <div class="countdown-inner" :class="{ visible: true }" style="display:flex; gap: 24px; align-items:center;">
-          <div style="display:flex; flex-direction:column; align-items:center;">
-            <el-progress type="circle" :width="100" striped striped-flow :percentage="progressBlack" :color="progressColors" :format="() => blackClock" />
-            <div style="margin-top:6px; font-weight:600; color:#333;">{{ lang.text.room.side_black }}</div>
-          </div>
-          <div style="display:flex; flex-direction:column; align-items:center;">
-            <el-progress type="circle" :width="100" striped striped-flow :percentage="progressWhite" :color="progressColors" :format="() => whiteClock" />
-            <div style="margin-top:6px; font-weight:600; color:#333;">{{ lang.text.room.side_white }}</div>
-          </div>
+    <!-- Govariants-style dual clocks (styled with our UI circle) -->
+    <div class="countdown-slot" v-if="!game.reviewMode && (game.status === 'playing' || game.status === 'waiting')">
+      <div class="countdown-inner" :class="{ visible: true }" style="display:flex; gap: 24px; align-items:center;">
+        <div style="display:flex; flex-direction:column; align-items:center;">
+          <el-progress type="circle" :width="100" striped striped-flow :percentage="progressBlack" :color="progressColors" :format="() => blackClock" />
+          <div style="margin-top:6px; font-weight:600; color:#333;">{{ lang.text.room.side_black }}</div>
+        </div>
+        <div style="display:flex; flex-direction:column; align-items:center;">
+          <el-progress type="circle" :width="100" striped striped-flow :percentage="progressWhite" :color="progressColors" :format="() => whiteClock" />
+          <div style="margin-top:6px; font-weight:600; color:#333;">{{ lang.text.room.side_white }}</div>
         </div>
       </div>
+    </div>
       <div class="input-box" v-if="!game.reviewMode && (game.status === 'playing' || game.status === 'waiting')">
         <input class="input" v-model="input" type="text" :placeholder="lang.text.room.chat_placeholder" @keyup.enter="sendMessage" />
       </div>
@@ -225,7 +225,7 @@ import { computed, onMounted, onUnmounted, ref, nextTick, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import api from "@/utils/api";
 import * as sound from "@/utils/sound";
-import { ElMessage, ElMessageBox, ElProgress, ElLoading, ElDialog, ElButton, ElSlider } from "element-plus";
+import { ElMessage, ElMessageBox, ElLoading, ElDialog, ElButton, ElSlider, ElProgress } from "element-plus";
 import { Chessman } from "@/utils/types";
 import { canPutChess } from "@/utils/chess";
 import { calculateGoResult } from "@/utils/chess2";
@@ -321,6 +321,46 @@ const progressBlack = ref(0);
 const progressWhite = ref(0);
 let clockTimer: any = null;
 
+function startClockLoop() {
+  clearInterval(clockTimer);
+  clockTimer = setInterval(() => {
+    try {
+      const now = Date.now();
+      blackClock.value = displayString(timeRt, 'black', now);
+      whiteClock.value = displayString(timeRt, 'white', now);
+      const msB = currentMsUntilTimeout(timeRt, 'black', now);
+      const msW = currentMsUntilTimeout(timeRt, 'white', now);
+      const cfg: any = timeRt.config;
+      if (cfg) {
+        if (timeRt.forPlayer.black.onThePlaySince != null && msB != null) {
+          let denom = 1;
+          if (cfg.type === 'byoyomi') denom = (timeRt.forPlayer.black.clockState as any).mainTimeRemainingMS > 0 ? cfg.mainTimeMS : cfg.periodTimeMS;
+          else if (cfg.type === 'canadian') denom = (timeRt.forPlayer.black.clockState as any).mainTimeRemainingMS > 0 ? cfg.mainTimeMS : cfg.periodTimeMS;
+          else denom = cfg.mainTimeMS || 1;
+          progressBlack.value = Math.max(0, Math.min(100, Math.floor((msB / Math.max(1, denom)) * 100)));
+        }
+        if (timeRt.forPlayer.white.onThePlaySince != null && msW != null) {
+          let denom = 1;
+          if (cfg.type === 'byoyomi') denom = (timeRt.forPlayer.white.clockState as any).mainTimeRemainingMS > 0 ? cfg.mainTimeMS : cfg.periodTimeMS;
+          else if (cfg.type === 'canadian') denom = (timeRt.forPlayer.white.clockState as any).mainTimeRemainingMS > 0 ? cfg.mainTimeMS : cfg.periodTimeMS;
+          else denom = cfg.mainTimeMS || 1;
+          progressWhite.value = Math.max(0, Math.min(100, Math.floor((msW / Math.max(1, denom)) * 100)));
+        }
+        // Time out: loser = side whose time hit 0
+        if (msB !== null && msB <= 0) {
+          try { ws?.send(JSON.stringify({ type: 'setWinner', data: { winner: 'white' } })); } catch {}
+          clearInterval(clockTimer);
+        } else if (msW !== null && msW <= 0) {
+          try { ws?.send(JSON.stringify({ type: 'setWinner', data: { winner: 'black' } })); } catch {}
+          clearInterval(clockTimer);
+        }
+      }
+    } catch {
+      // ignore clock UI errors
+    }
+  }, 100);
+}
+
 // Score summary drag and position
 const summaryRef = ref<HTMLElement | null>(null);
 const bodyRef = ref<HTMLElement | null>(null);
@@ -359,44 +399,7 @@ const onSummaryMouseUp = () => {
   document.removeEventListener('mouseup', onSummaryMouseUp);
 };
 
-function startClockLoop() {
-  clearInterval(clockTimer);
-  clockTimer = setInterval(() => {
-    try {
-      const now = Date.now();
-      blackClock.value = displayString(timeRt, 'black', now);
-      whiteClock.value = displayString(timeRt, 'white', now);
-      const msB = currentMsUntilTimeout(timeRt, 'black', now);
-      const msW = currentMsUntilTimeout(timeRt, 'white', now);
-      const cfg: any = timeRt.config;
-      if (cfg) {
-        if (timeRt.forPlayer.black.onThePlaySince != null && msB != null) {
-          let denom = 1;
-          if (cfg.type === 'byoyomi') denom = (timeRt.forPlayer.black.clockState as any).mainTimeRemainingMS > 0 ? cfg.mainTimeMS : cfg.periodTimeMS;
-          else if (cfg.type === 'canadian') denom = (timeRt.forPlayer.black.clockState as any).mainTimeRemainingMS > 0 ? cfg.mainTimeMS : cfg.periodTimeMS;
-          else denom = cfg.mainTimeMS || 1;
-          progressBlack.value = Math.max(0, Math.min(100, Math.floor((msB / Math.max(1, denom)) * 100)));
-        }
-        if (timeRt.forPlayer.white.onThePlaySince != null && msW != null) {
-          let denom = 1;
-          if (cfg.type === 'byoyomi') denom = (timeRt.forPlayer.white.clockState as any).mainTimeRemainingMS > 0 ? cfg.mainTimeMS : cfg.periodTimeMS;
-          else if (cfg.type === 'canadian') denom = (timeRt.forPlayer.white.clockState as any).mainTimeRemainingMS > 0 ? cfg.mainTimeMS : cfg.periodTimeMS;
-          else denom = cfg.mainTimeMS || 1;
-          progressWhite.value = Math.max(0, Math.min(100, Math.floor((msW / Math.max(1, denom)) * 100)));
-        }
-        if (msB !== null && msB <= 0) {
-          ws?.send(JSON.stringify({ type: 'setWinner', data: { winner: 'white' } }));
-          clearInterval(clockTimer);
-        } else if (msW !== null && msW <= 0) {
-          ws?.send(JSON.stringify({ type: 'setWinner', data: { winner: 'black' } }));
-          clearInterval(clockTimer);
-        }
-      }
-    } catch (e) {
-      // ignore clock UI errors
-    }
-  }, 100);
-}
+//
 
 // AIæ¨¡å¼æ£€æµ‹ - æ£€æŸ¥æˆ¿é—´çš„phaseå­—æ®µ
 const isAIMode = computed(() => {
@@ -492,6 +495,13 @@ const initGame = async (data: Record<string, any>, reviewModeRequested: boolean 
   // re-init time runtime from backend-provided config, if any
   timeRt = initRuntime((store.state.game.timeControl ?? null) as any);
   startClockLoop();
+  // 根据需求：双方各自下出第一手之后才开始计时
+  try {
+    const toMove = game.value.round ? 'black' : 'white';
+    if (game.value.moves >= 2 && timeRt.forPlayer[toMove].onThePlaySince == null) {
+      startTurn(timeRt, toMove, Date.now());
+    }
+  } catch {}
   console.log("Game initialized with data:", data);
   console.log("Game status:", game.value.status);
   console.log("Game round:", game.value.round);
@@ -523,7 +533,7 @@ const initGame = async (data: Record<string, any>, reviewModeRequested: boolean 
     if (data.type === "updateChess") {
       game.value.moves++;
       const chessman = data.data.putChess as Chessman;
-      // update time runtime (finish mover, start opponent)
+      // update time runtime (finish mover)
       const now = Date.now();
       finishMove(timeRt, chessman.type === 'black' ? 'black' : 'white', now);
       if (chessman.position !== "0,0") {
@@ -558,9 +568,11 @@ const initGame = async (data: Record<string, any>, reviewModeRequested: boolean 
       // Keep review cursor at end when new moves arrive
       store.dispatch('game/reviewGoto', game.value.records.length);
       store.commit("game/setRound", true);
-      // start next side
+      // 双方各下一手后才开始计时
       const nextSide = chessman.type === 'black' ? 'white' : 'black';
-      startTurn(timeRt, nextSide, now);
+      if (game.value.moves >= 2 && timeRt.forPlayer[nextSide].onThePlaySince == null) {
+        startTurn(timeRt, nextSide, now);
+      }
 
     } else if (data.type === "startGame") {
       // Use store mutation so audio/BGM and other side-effects run
@@ -568,10 +580,12 @@ const initGame = async (data: Record<string, any>, reviewModeRequested: boolean 
       // New game boundary: restart BGM from the beginning
       sound.startBgmFromBeginning();
       ElMessage.success(lang.value.text.room.start_game);
-      // set initial side on clock
+      // set initial side on clock（仅当双方已各下一手）
       const now = Date.now();
       const toMove = game.value.round ? 'black' : 'white';
-      startTurn(timeRt, toMove, now);
+      if (game.value.moves >= 2 && timeRt.forPlayer[toMove].onThePlaySince == null) {
+        startTurn(timeRt, toMove, now);
+      }
       // Fetch fresh room info to populate visitor id and player panel
       api.getGameInfo(roomId)
         .then((latest: any) => {
@@ -642,7 +656,30 @@ const putChess = async (position: string) => {
     ElMessage.warning({ message: lang.value.text.room.ws_connection_error, grouping: true });
     return;
   }
+  // 超时落子防护：如果本地已超时则直接判负（对手胜），不再发送落子
+  try {
+    const me = game.value.camp as 'black' | 'white';
+    const now = Date.now();
+    const ms = currentMsUntilTimeout(timeRt, me, now);
+    if (ms !== null && ms <= 0) {
+      ws?.send(JSON.stringify({ type: 'setWinner', data: { winner: me === 'black' ? 'white' : 'black' } }));
+      return;
+    }
+  } catch {}
   const chessman: Chessman = game.value.board1.get(position);
+  // Optimistically切表：仅当双方已各下一手（总步数>=2）时才启动/切换计时
+  try {
+    const anticipatedMoves = game.value.moves; // 已在上方++
+    if (anticipatedMoves >= 2) {
+      const now = Date.now();
+      const me = game.value.camp as 'black' | 'white';
+      const opp = me === 'black' ? 'white' : 'black';
+      finishMove(timeRt, me, now);
+      if (timeRt.forPlayer[opp].onThePlaySince == null) {
+        startTurn(timeRt, opp, now);
+      }
+    }
+  } catch {}
   ws.send(JSON.stringify({
     type: "updateChess",
     data: {
@@ -705,6 +742,29 @@ const passChess = () => {
     ws.send(JSON.stringify({ type: "stoneRemovalStart", data: {} }));
     return;
   }
+  // 超时防护：尝试 PASS 前先检查是否已超时
+  try {
+    const me = game.value.camp as 'black' | 'white';
+    const now = Date.now();
+    const ms = currentMsUntilTimeout(timeRt, me, now);
+    if (ms !== null && ms <= 0) {
+      ws?.send(JSON.stringify({ type: 'setWinner', data: { winner: me === 'black' ? 'white' : 'black' } }));
+      return;
+    }
+  } catch {}
+  // Optimistically切表（仅当总步数>=2）
+  try {
+    const anticipatedMoves = game.value.moves + 1; // 本次PASS也算一步
+    if (anticipatedMoves >= 2) {
+      const now = Date.now();
+      const me = game.value.camp as 'black' | 'white';
+      const opp = me === 'black' ? 'white' : 'black';
+      finishMove(timeRt, me, now);
+      if (timeRt.forPlayer[opp].onThePlaySince == null) {
+        startTurn(timeRt, opp, now);
+      }
+    }
+  } catch {}
   ws.send(JSON.stringify({
     type: "updateChess", data: {
       putChess: chessman,

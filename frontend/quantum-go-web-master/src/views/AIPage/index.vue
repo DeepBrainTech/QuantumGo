@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="main">
     <div v-if="game.status === 'playing'" class="operation">
       <div class="item btn" :class="{ disabled: stoneRemovalPhase }" @click="!stoneRemovalPhase && passChess()">{{ lang.text.room.pass }}</div>
@@ -92,6 +92,7 @@
           <button class="rv-btn" @click="gotoEnd" :disabled="currentMove === totalMoves">&raquo;&raquo;&raquo;</button>
         </div>
       </div>
+      <!-- Govariants-style dual clocks in our UI -->
       <div class="countdown-slot">
         <div class="countdown-inner" :class="{ visible: true }" style="display:flex; gap: 24px; align-items:center;">
           <div style="display:flex; flex-direction:column; align-items:center;">
@@ -178,14 +179,14 @@ import BarrageComponent from "@/components/BarrageComponent/index.vue";
 import { useStore } from "vuex";
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { ElMessage, ElMessageBox, ElProgress, ElLoading, ElDialog, ElButton } from "element-plus";
+import { ElMessage, ElMessageBox, ElLoading, ElDialog, ElButton, ElProgress } from "element-plus";
 import { Chessman, ChessmanType } from "@/utils/types";
 import api from "@/utils/api";
 import { canPutChess, canPutChessSituationalSuperko, hashBoardWithTurn } from "@/utils/chess";
 import { calculateGoResult } from "@/utils/chess2";
 import { exportQuantumSGF } from "@/utils/sgf";
-import { initRuntime, startTurn, finishMove, currentMsUntilTimeout, displayString } from "@/utils/timeControl";
 import * as sound from "@/utils/sound";
+import { initRuntime, startTurn, finishMove, currentMsUntilTimeout, displayString } from "@/utils/timeControl";
 
 const route = useRoute();
 const router = useRouter();
@@ -217,7 +218,7 @@ const scoreDetail = ref({
   result: ''
 });
 
-// è¿›åº¦æ¡ç›¸å…³
+// 进度条相关
 const progressColors = ref([
   { color: "#f56c6c", percentage: 30 },
   { color: "#e6a23c", percentage: 60 },
@@ -228,12 +229,12 @@ const progressLabel = (_percentage: number) => '--';
 const progress = ref(0);
 let timer: NodeJS.Timeout | undefined;
 
-// AIæ€è€ƒçŠ¶æ€ä¸Žå¼ƒæƒè·Ÿè¸ª
+// AI思考状态与弃权跟踪
 const isAIThinking = ref(false);
 const playerPassed = ref(false);
 const aiPassed = ref(false);
 
-// Score Estimator & ç‚¹ç›®
+// Score Estimator & 点目
 const showScoreEstimate = ref(false);
 const estimatingScore = ref(false);
 const scoreEstimateData1 = ref<any>(null);
@@ -241,7 +242,7 @@ const scoreEstimateData2 = ref<any>(null);
 const stoneRemovalPhase = ref(false);
 const removalSet1 = ref<Set<string>>(new Set());
 const removalSet2 = ref<Set<string>>(new Set());
-const myRemovalAccepted = ref(false); // AI é»˜è®¤æŽ¥å—ï¼Œåªéœ€çŽ©å®¶æŽ¥å—
+const myRemovalAccepted = ref(false); // AI 默认接受，只需玩家接受
 const formatScoreLead = (lead: number): string => {
   if (lead > 0.0001) return `B+${lead.toFixed(1)}`;
   if (lead < -0.0001) return `W+${Math.abs(lead).toFixed(1)}`;
@@ -257,7 +258,7 @@ const computeBoardLeadText = (src: Map<string, any>, removed: Set<string>) => {
 const board1LeadText = computed(() => computeBoardLeadText(game.value.board1, removalSet1.value));
 const board2LeadText = computed(() => computeBoardLeadText(game.value.board2, removalSet2.value));
 
-// 形势判断阶段的净分差计算（使用calculateGoResult）
+// ????????????(??calculateGoResult)
 const computeScoreLead = (board: Map<string, any>): string => {
   const r = calculateGoResult(board as any, game.value.model, 0, 0, 0);
   const lead = r.blackScore - r.whiteScore;
@@ -267,7 +268,58 @@ const computeScoreLead = (board: Map<string, any>): string => {
 const board1ScoreLead = computed(() => computeScoreLead(game.value.board1));
 const board2ScoreLead = computed(() => computeScoreLead(game.value.board2));
 
-// 计算考虑死子移除的调整后分数
+// Time control runtime (AI mode: player=black, AI=white)
+let timeRt = initRuntime((store.state.game.timeControl ?? null) as any);
+const blackClock = ref('');
+const whiteClock = ref('');
+const progressBlack = ref(0);
+const progressWhite = ref(0);
+let clockTimer: any = null;
+
+function startClockLoop() {
+  clearInterval(clockTimer);
+  clockTimer = setInterval(() => {
+    const now = Date.now();
+    try {
+      blackClock.value = displayString(timeRt, 'black', now);
+      whiteClock.value = displayString(timeRt, 'white', now);
+      const msB = currentMsUntilTimeout(timeRt, 'black', now);
+      const msW = currentMsUntilTimeout(timeRt, 'white', now);
+      const cfg: any = timeRt.config;
+      if (cfg) {
+        if (timeRt.forPlayer.black.onThePlaySince != null && msB != null) {
+          let denom = cfg.mainTimeMS || 1;
+          if (cfg.type === 'byoyomi' || cfg.type === 'canadian') {
+            const s: any = timeRt.forPlayer.black.clockState;
+            denom = s.mainTimeRemainingMS > 0 ? cfg.mainTimeMS : cfg.periodTimeMS;
+          }
+          progressBlack.value = Math.max(0, Math.min(100, Math.floor((msB / Math.max(1, denom)) * 100)));
+        }
+        if (timeRt.forPlayer.white.onThePlaySince != null && msW != null) {
+          let denom = cfg.mainTimeMS || 1;
+          if (cfg.type === 'byoyomi' || cfg.type === 'canadian') {
+            const s: any = timeRt.forPlayer.white.clockState;
+            denom = s.mainTimeRemainingMS > 0 ? cfg.mainTimeMS : cfg.periodTimeMS;
+          }
+          progressWhite.value = Math.max(0, Math.min(100, Math.floor((msW / Math.max(1, denom)) * 100)));
+        }
+        // If player's clock runs out, finish the game (AI wins)
+        if (msB !== null && msB <= 0) {
+          clearInterval(clockTimer);
+          store.commit('game/setStatus', 'finished');
+          store.commit('game/setRound', false);
+          ElMessageBox.alert(
+            lang.value.text.room.ai_win,
+            lang.value.text.room.finish_title,
+            { confirmButtonText: 'OK' }
+          );
+        }
+      }
+    } catch {}
+  }, 100);
+}
+
+// ??????????????
 const adjustedBlackScore = computed(() => {
   if (!stoneRemovalPhase.value) return game.value.blackPoints;
   
@@ -304,65 +356,13 @@ const adjustedWhiteScore = computed(() => {
 });
 
 // Time control runtime (AI mode: player=black, AI=white)
-let timeRt = initRuntime((store.state.game.timeControl ?? null) as any);
-const blackClock = ref('');
-const whiteClock = ref('');
-const progressBlack = ref(0);
-const progressWhite = ref(0);
-let clockTimer: any = null;
+// Countdown and time control removed
 
-  function startClockLoop() {
-    clearInterval(clockTimer);
-    clockTimer = setInterval(() => {
-      const now = Date.now();
-      try {
-        blackClock.value = displayString(timeRt, 'black', now);
-        whiteClock.value = displayString(timeRt, 'white', now);
-        const msB = currentMsUntilTimeout(timeRt, 'black', now);
-        const msW = currentMsUntilTimeout(timeRt, 'white', now);
-        const cfg: any = timeRt.config;
-        if (cfg) {
-          if (timeRt.forPlayer.black.onThePlaySince != null && msB != null) {
-            let denom = cfg.mainTimeMS || 1;
-            if (cfg.type === 'byoyomi' || cfg.type === 'canadian') {
-              const s: any = timeRt.forPlayer.black.clockState;
-              denom = s.mainTimeRemainingMS > 0 ? cfg.mainTimeMS : cfg.periodTimeMS;
-            }
-            progressBlack.value = Math.max(0, Math.min(100, Math.floor((msB / Math.max(1, denom)) * 100)));
-          }
-          if (timeRt.forPlayer.white.onThePlaySince != null && msW != null) {
-            let denom = cfg.mainTimeMS || 1;
-            if (cfg.type === 'byoyomi' || cfg.type === 'canadian') {
-              const s: any = timeRt.forPlayer.white.clockState;
-              denom = s.mainTimeRemainingMS > 0 ? cfg.mainTimeMS : cfg.periodTimeMS;
-            }
-            progressWhite.value = Math.max(0, Math.min(100, Math.floor((msW / Math.max(1, denom)) * 100)));
-          }
-          // Auto-lose on time for player (AI assumed never times out)
-          if (msB !== null && msB <= 0) {
-            store.commit('game/setStatus', 'finished');
-            store.commit('game/setRound', false);
-            clearInterval(clockTimer);
-            ElMessageBox.alert(
-              lang.value.text.room.ai_win,
-              lang.value.text.room.finish_title,
-              { confirmButtonText: 'OK' }
-            );
-          }
-        }
-      } catch {}
-    }, 100);
-  }
-
-// Legacy countdown disabled
-const startPlayerTimer = () => { /* no-op */ };
-const stopTimer = () => { /* no-op */ };
-
-// åˆå§‹åŒ–AIæ¸¸æˆ
+// 初始化AI游戏
 onMounted(() => {
-  // å»¶è¿Ÿåˆå§‹åŒ–ï¼Œç¡®ä¿DOMå…ƒç´ å·²ç»æ¸²æŸ“
+  // 延迟初始化，确保DOM元素已经渲染
   setTimeout(() => {
-    initAIGame(); startClockLoop();
+    initAIGame();
   }, 100);
 });
 
@@ -398,14 +398,13 @@ function initAIGame() {
   playerPassed.value = false;
   aiPassed.value = false;
 
-  // Initialize time control and start Black's clock
+  // 初始化时控但不启动计时（双方各下一手后才开始）
   timeRt = initRuntime((store.state.game.timeControl ?? null) as any);
-  startTurn(timeRt, 'black', Date.now());
-  startPlayerTimer();
+  startClockLoop();
 }
 
-// MCTSï¼ˆæœ¬åœ°ç®€æ˜“AIï¼‰ä½œä¸ºåŽå¤‡æ–¹æ¡ˆ
-// MCTSèŠ‚ç‚¹ç±»
+// MCTS（本地简易AI）作为后备方案
+// MCTS节点类
 class MCTSNode {
   position: string;
   parent: MCTSNode | null;
@@ -425,20 +424,20 @@ class MCTSNode {
     this.player = player;
   }
   
-  // UCB1å…¬å¼
+  // UCB1公式
   ucb1(c: number = 1.414): number {
     if (this.visits === 0) return Infinity;
     return (this.wins / this.visits) + c * Math.sqrt(Math.log(this.parent?.visits || 1) / this.visits);
   }
   
-  // é€‰æ‹©æœ€ä½³å­èŠ‚ç‚¹
+  // 选择最佳子节点
   selectChild(): MCTSNode {
     return this.children.reduce((best, child) => 
       child.ucb1() > best.ucb1() ? child : best
     );
   }
   
-  // æ·»åŠ å­èŠ‚ç‚¹
+  // 添加子节点
   addChild(position: string, untriedMoves: string[], player: 'black' | 'white'): MCTSNode {
     const child = new MCTSNode(position, this, untriedMoves, player);
     this.children.push(child);
@@ -446,29 +445,29 @@ class MCTSNode {
     return child;
   }
   
-  // æ›´æ–°èŠ‚ç‚¹ç»Ÿè®¡
+  // 更新节点统计
   update(result: number) {
     this.visits++;
     this.wins += result;
   }
 }
 
-// æœ¬åœ°MCTSç®—æ³•ï¼ˆåŽå¤‡ï¼‰
+// 本地MCTS算法（后备）
 const getAIMoveLocal = (): string | null => {
   const board1 = game.value.board1;
   const board2 = game.value.board2;
   const boardSize = game.value.model;
-  const aiType = 'white'; // AIæ˜¯ç™½æ£‹
+  const aiType = 'white'; // AI是白棋
   
-  console.log('Fallback MCTS - æ£‹ç›˜å°ºå¯¸:', boardSize);
+  console.log('Fallback MCTS - 棋盘尺寸:', boardSize);
   
-  // èŽ·å–æ‰€æœ‰å¯èƒ½çš„ä½ç½®
+  // 获取所有可能的位置
   const possibleMoves: string[] = [];
   for (let x = 1; x <= boardSize; x++) {
     for (let y = 1; y <= boardSize; y++) {
       const position = `${x},${y}`;
       if (!board1.has(position) && !board2.has(position)) {
-        // ä½¿ç”¨æƒ…æ™¯è¶…åŠ«ï¼ˆSSKï¼‰ä¸€è‡´æ€§æ£€æŸ¥ï¼Œé¿å…åŽç»­è¢« store æ‹’ç»
+        // 使用情景超劫（SSK）一致性检查，避免后续被 store 拒绝
         const legal1 = canPutChessSituationalSuperko(
           board1,
           position,
@@ -494,69 +493,69 @@ const getAIMoveLocal = (): string | null => {
   
   
   if (possibleMoves.length === 0) {
-    return null; // æ²¡æœ‰å¯ä¸‹çš„ä½ç½®
+    return null; // 没有可下的位置
   }
   
-  // å¦‚æžœåªæœ‰ä¸€æ­¥å¯é€‰ï¼Œç›´æŽ¥è¿”å›ž
+  // 如果只有一步可选，直接返回
   if (possibleMoves.length === 1) {
     return possibleMoves[0];
   }
   
-  // åˆ›å»ºæ ¹èŠ‚ç‚¹
+  // 创建根节点
   const root = new MCTSNode('', null, possibleMoves, aiType);
   
-  // MCTSä¸»å¾ªçŽ¯ - ä¼˜åŒ–æ€§èƒ½
+  // MCTS主循环 - 优化性能
   const iterations = Math.min(100, possibleMoves.length * 20);
   
   for (let i = 0; i < iterations; i++) {
-    // 1. é€‰æ‹© (Selection)
+    // 1. 选择 (Selection)
     let node = root;
     while (node.children.length > 0 && node.untriedMoves.length === 0) {
       node = node.selectChild();
     }
     
-    // 2. æ‰©å±• (Expansion)
+    // 2. 扩展 (Expansion)
     if (node.untriedMoves.length > 0) {
       const randomMove = node.untriedMoves[Math.floor(Math.random() * node.untriedMoves.length)];
       const nextPlayer = node.player === 'black' ? 'white' : 'black';
       node = node.addChild(randomMove, [], nextPlayer);
     }
     
-    // 3. æ¨¡æ‹Ÿ (Simulation)
+    // 3. 模拟 (Simulation)
     const result = simulateGame(node.position, node.player, board1, board2, boardSize);
     
-    // 4. å›žä¼  (Backpropagation)
+    // 4. 回传 (Backpropagation)
     while (node !== null) {
       node.update(result);
       node = node.parent!;
     }
   }
   
-  // é€‰æ‹©è®¿é—®æ¬¡æ•°æœ€å¤šçš„å­èŠ‚ç‚¹
+  // 选择访问次数最多的子节点
   const bestChild = root.children.reduce((best, child) => 
     child.visits > best.visits ? child : best
   );
   
-  console.log('MCTSç»“æžœ:', bestChild.position, `(${bestChild.visits}æ¬¡è®¿é—®)`);
+  console.log('MCTS结果:', bestChild.position, `(${bestChild.visits}次访问)`);
 
   return bestChild.position;
 };
 
-// æ¨¡æ‹Ÿæ¸¸æˆç»“æžœ
+// 模拟游戏结果
 const simulateGame = (move: string, player: 'black' | 'white', board1: Map<string, any>, board2: Map<string, any>, boardSize: number): number => {
-  // åˆ›å»ºæ¨¡æ‹Ÿæ£‹ç›˜
+  // 创建模拟棋盘
   const simBoard1 = new Map(board1);
   const simBoard2 = new Map(board2);
   
-  // æ¨¡æ‹Ÿä¸‹æ£‹
+  // 模拟下棋
   const chessman = { position: move, type: player, brother: move };
   simBoard1.set(move, chessman);
   simBoard2.set(move, chessman);
   
-  // ç®€å•çš„éšæœºæ¨¡æ‹Ÿ
+  // 简单的随机模拟
   let currentPlayer = player === 'black' ? 'white' : 'black';
   let moves = 0;
-  const maxMoves = 10; // é™åˆ¶æ¨¡æ‹Ÿæ­¥æ•°
+  const maxMoves = 10; // 限制模拟步数
   
   while (moves < maxMoves) {
     const possibleMoves: string[] = [];
@@ -574,7 +573,7 @@ const simulateGame = (move: string, player: 'black' | 'white', board1: Map<strin
     
     if (possibleMoves.length === 0) break;
     
-    // éšæœºé€‰æ‹©ä¸€æ­¥
+    // 随机选择一步
     const randomMove = possibleMoves[Math.floor(Math.random() * possibleMoves.length)];
     const chessman = { position: randomMove, type: currentPlayer, brother: randomMove };
     simBoard1.set(randomMove, chessman);
@@ -584,28 +583,28 @@ const simulateGame = (move: string, player: 'black' | 'white', board1: Map<strin
     moves++;
   }
   
-  // ç®€å•çš„èƒœè´Ÿåˆ¤æ–­ï¼ˆåŸºäºŽæ£‹å­æ•°é‡ï¼‰
+  // 简单的胜负判断（基于棋子数量）
   const blackCount = Array.from(simBoard1.values()).filter(chess => chess.type === 'black').length;
   const whiteCount = Array.from(simBoard1.values()).filter(chess => chess.type === 'white').length;
   
-  // è¿”å›žç»“æžœï¼š1è¡¨ç¤ºAIï¼ˆç™½æ£‹ï¼‰èŽ·èƒœï¼Œ0è¡¨ç¤ºå¹³å±€ï¼Œ-1è¡¨ç¤ºAIå¤±è´¥
+  // 返回结果：1表示AI（白棋）获胜，0表示平局，-1表示AI失败
   if (whiteCount > blackCount) return 1;
   if (whiteCount < blackCount) return -1;
   return 0;
 };
 
-// å°† GTP åæ ‡ï¼ˆå¦‚ "D16"/"Q3"ï¼‰è½¬æ¢ä¸º "x,y" å­—ç¬¦ä¸²ï¼ˆx ä»Žä¸Šåˆ°ä¸‹ 1..Nï¼Œy ä»Žå·¦åˆ°å³ 1..Nï¼‰
+// 将 GTP 坐标（如 "D16"/"Q3"）转换为 "x,y" 字符串（x 从上到下 1..N，y 从左到右 1..N）
 const gtpToXY = (coord: string, size: number): string | null => {
   const c = coord.trim().toUpperCase();
   if (c === 'PASS' || c === 'RESIGN') return null;
-  // æå–å­—æ¯åˆ— + æ•°å­—è¡Œ
+  // 提取字母列 + 数字行
   const match = c.match(/^([A-Z])(\d{1,2})$/);
   if (!match) return null;
   const colChar = match[1];
   const row = parseInt(match[2], 10);
-  // GTP è¡Œå·è‡ªåº•å‘ä¸Š -> x = size - row + 1
+  // GTP 行号自底向上 -> x = size - row + 1
   const x = size - row + 1;
-  // åˆ—å­—æ¯è·³è¿‡ Iï¼šA..H=1..8, J=9, K=10,...
+  // 列字母跳过 I：A..H=1..8, J=9, K=10,...
   const code = colChar.charCodeAt(0);
   const y = code < 'I'.charCodeAt(0)
     ? (code - 'A'.charCodeAt(0) + 1)
@@ -614,13 +613,13 @@ const gtpToXY = (coord: string, size: number): string | null => {
   return `${x},${y}`;
 };
 
-// ä»Žæœ¬å±€è®°å½•æž„é€ ç»å…¸å›´æ£‹åŽ†å²ï¼ˆä½¿ç”¨ board1 çš„ç€æ³•ï¼‰
+// 从本局记录构造经典围棋历史（使用 board1 的着法）
 const buildClassicHistory = (): { color: 'black' | 'white', position: string }[] => {
   const history: { color: 'black' | 'white', position: string }[] = [];
   for (const rec of game.value.records) {
     if (rec.add && rec.add.length > 0) {
       const m = rec.add[0];
-      // åœ¨ board1 çš„ä½ç½®ä¸Žé¢œè‰²ï¼šposition=add[0].position, color=add[0].type
+      // 在 board1 的位置与颜色：position=add[0].position, color=add[0].type
       if (m && m.position && m.type) {
         history.push({ color: m.type as 'black' | 'white', position: m.position });
       }
@@ -629,7 +628,7 @@ const buildClassicHistory = (): { color: 'black' | 'white', position: string }[]
   return history;
 };
 
-// è®¡ç®—åœ¨å½“å‰åŒæ£‹ç›˜+SSKè§„åˆ™ä¸‹ä¸å…è®¸çš„ç‚¹ï¼ˆä¾›åŽç«¯è¿‡æ»¤ï¼‰
+// 计算在当前双棋盘+SSK规则下不允许的点（供后端过滤）
 const computeForbidden = (): string[] => {
   const boardSize = game.value.model as 7 | 9 | 13 | 19;
   const forbidden: string[] = [];
@@ -640,12 +639,12 @@ const computeForbidden = (): string[] => {
     for (let y = 1; y <= boardSize; y++) {
       const clicked = `${x},${y}`;
       if (game.value.board1.has(clicked) || game.value.board2.has(clicked)) { continue; }
-      // ä¸Ž store.putChess ä¸€è‡´çš„è½ç‚¹æ˜ å°„ï¼šè‹¥ç‚¹å‡»é‡å­ä½ç½®ï¼Œåˆ™ä¸¤ç›˜é¢åˆ†åˆ«è½åœ¨é»‘/ç™½é‡å­ä½ç½®
+      // 与 store.putChess 一致的落点映射：若点击量子位置，则两盘面分别落在黑/白量子位置
       let pos1 = clicked;
       let pos2 = clicked;
       if (game.value.subStatus === 'common' && isQuantumPos(clicked)) {
-        pos1 = game.value.whiteQuantum; // AI=whiteï¼Œboard1 è½åœ¨ whiteQuantum
-        pos2 = game.value.blackQuantum; // board2 è½åœ¨ blackQuantum
+        pos1 = game.value.whiteQuantum; // AI=white，board1 落在 whiteQuantum
+        pos2 = game.value.blackQuantum; // board2 落在 blackQuantum
       }
       const ok1 = canPutChessSituationalSuperko(
         game.value.board1, pos1, type1, boardSize,
@@ -661,7 +660,7 @@ const computeForbidden = (): string[] => {
   return forbidden;
 };
 
-// è°ƒç”¨åŽç«¯ KataGo èŽ·å– AI ä¸€æ‰‹ï¼›å¤±è´¥æ—¶å›žé€€åˆ°æœ¬åœ° MCTS
+// 调用后端 KataGo 获取 AI 一手；失败时回退到本地 MCTS
 // Build both board histories for dual-board analysis
 const buildDualHistories = (): {
   a: { color: 'black' | 'white', position: string }[],
@@ -688,7 +687,7 @@ const buildDualHistories = (): {
 
 const getAIMove = async (): Promise<{ kind: 'move' | 'pass' | 'resign', position?: string } | null> => {
   const boardSize = game.value.model;
-  const next_to_move: 'black' | 'white' = 'white'; // æœ¬é¡µçŽ©å®¶=é»‘ï¼ŒAI=ç™½
+  const next_to_move: 'black' | 'white' = 'white'; // 本页玩家=黑，AI=白
   const { a: board_a_moves, b: board_b_moves } = buildDualHistories();
   try {
     const res = await api.aiGenmoveDual({
@@ -716,39 +715,39 @@ const getAIMove = async (): Promise<{ kind: 'move' | 'pass' | 'resign', position
   }
 };
 
-// AIä¸‹æ£‹
+// AI下棋
 const makeAIMove = async () => {
   if (stoneRemovalPhase.value) { return; }
   if (game.value.status !== 'playing' || game.value.round) {
-    return; // ä¸æ˜¯AIçš„å›žåˆ
+    return; // 不是AI的回合
   }
   
-  // AIå¼€å§‹æ€è€ƒï¼Œåœæ­¢å€’è®¡æ—¶
-  stopTimer();
+  // AI开始思考，停止倒计时
+  // timer removed
   
   const aiMove = await getAIMove();
   if (!aiMove || aiMove.kind === 'pass') {
-    // AI æ— è·¯å¯èµ° -> pass
+    // AI 无路可走 -> pass
     aiPassed.value = true;
-    // è®¡å…¥ä¸€ä¸ªå›žåˆï¼ˆAIæ–¹è¡ŒåŠ¨ï¼‰
+    // 计入一个回合（AI方行动）
     game.value.moves++;
-    // æç¤º AI passï¼Œä¾¿äºŽçŽ©å®¶é€‰æ‹©è·Ÿç€ pass ç»ˆå±€
+    // 提示 AI pass，便于玩家选择跟着 pass 终局
     ElMessage.warning({ message: lang.value.text.room.ai_pass, grouping: true });
-    // åŒæ–¹è¿žç»­å¼ƒæƒ -> è¿›å…¥ç‚¹ç›®ï¼ˆAIé»˜è®¤æŽ¥å—ï¼‰
+    // 双方连续弃权 -> 进入点目（AI默认接受）
     if (playerPassed.value) {
       enterStoneRemoval();
       isAIThinking.value = false;
       return;
     }
-    // åˆ‡å›žçŽ©å®¶å›žåˆ
+    // 切回玩家回合
     store.commit('game/setRound', true);
     isAIThinking.value = false;
-    // AI passåŽï¼Œå¯åŠ¨çŽ©å®¶å›žåˆå€’è®¡æ—¶
-    startPlayerTimer();
+    // AI pass后，启动玩家回合倒计时
+    // timer removed
     return;
   }
   if (aiMove.kind === 'resign') {
-    // AI è®¤è¾“ -> çŽ©å®¶èƒœ
+    // AI 认输 -> 玩家胜
     store.commit('game/setStatus', 'finished');
     store.commit('game/setRound', false);
     ElMessageBox.alert(lang.value.text.room.ai_resign_you_win, lang.value.text.room.finish_title, { confirmButtonText: 'OK' });
@@ -756,14 +755,14 @@ const makeAIMove = async () => {
     return;
   }
   
-  // ä¸ºé¿å…â€œAIä¸èµ°â€çŽ°è±¡ï¼š
-  // 1) å…ˆæœ¬åœ°æ ¡éªŒå€™é€‰ç‚¹ï¼ˆSSKï¼‰ï¼Œä¸åˆæ³•åˆ™é‡è¯•è‹¥å¹²æ¬¡ï¼›
-  // 2) è‹¥å¤šæ¬¡ä»ä¸åˆæ³•åˆ™å›žé€€åˆ°æœ¬åœ°æœç´¢ï¼›
+  // 为避免“AI不走”现象：
+  // 1) 先本地校验候选点（SSK），不合法则重试若干次；
+  // 2) 若多次仍不合法则回退到本地搜索；
   let pos = aiMove.position as string | undefined;
   const maxTries = 3;
   let tries = 0;
   const isLegalForBoth = (clicked: string) => {
-    // ä¸Ž store.putChess ç›¸åŒçš„åæ ‡æ˜ å°„è§„åˆ™
+    // 与 store.putChess 相同的坐标映射规则
     const type1: ChessmanType = 'white';
     const type2: ChessmanType = (game.value.subStatus === 'common') ? 'white' : 'black';
     const isQuantumPos = (p: string) => p && (p === game.value.blackQuantum || p === game.value.whiteQuantum);
@@ -784,17 +783,17 @@ const makeAIMove = async () => {
     return ok1 && ok2;
   };
   while (pos && !isLegalForBoth(pos) && tries < maxTries) {
-    console.warn('AIå»ºè®®ç‚¹ä¸åˆæ³•ï¼Œé‡è¯•', { pos, tries });
+    console.warn('AI建议点不合法，重试', { pos, tries });
     const retry = await getAIMove();
     tries++;
     if (!retry || retry.kind !== 'move') { pos = undefined; break; }
     pos = retry.position;
   }
   if (!pos || !isLegalForBoth(pos)) {
-    // ä»ä¸åˆæ³•ï¼šå°è¯•æœ¬åœ°æ‰¾ä¸€ä¸ªå¯è¡Œç‚¹
+    // 仍不合法：尝试本地找一个可行点
     const fallback = getAIMoveLocal();
     if (!fallback) {
-      // è½å­å¤±è´¥ï¼Œè§†ä¸º pass
+      // 落子失败，视为 pass
       aiPassed.value = true;
       ElMessage.warning({ message: lang.value.text.room.ai_pass, grouping: true });
       if (playerPassed.value) { enterStoneRemoval(); isAIThinking.value = false; return; }
@@ -806,10 +805,12 @@ const makeAIMove = async () => {
   }
 
   console.log('AI move:', pos);
-  // ä½¿ç”¨storeçš„putChess actionï¼Œä¸ŽPVPæ¨¡å¼ä¿æŒä¸€è‡´
-  const result = await (() => { const now = Date.now(); finishMove(timeRt,'white', now); startTurn(timeRt,'black', now); return store.dispatch('game/putChess', { position: pos, type: 'white' }); })();
+  // 使用store的putChess action，与PVP模式保持一致
+  // AI下子：结束白方，切黑方（仅当总步数>=2，即双方均已下一手）
+  { const now = Date.now(); finishMove(timeRt,'white', now); if ((game.value.moves + 1) >= 2 && timeRt.forPlayer['black'].onThePlaySince == null) { startTurn(timeRt,'black', now); } }
+  const result = await store.dispatch('game/putChess', { position: pos, type: 'white' });
   if (!result) {
-    // è‹¥ä»å¤±è´¥ï¼Œæœ€ç»ˆè§†ä¸º pass
+    // 若仍失败，最终视为 pass
     aiPassed.value = true;
     ElMessage.warning({ message: lang.value.text.room.ai_pass, grouping: true });
     if (playerPassed.value) { enterStoneRemoval(); isAIThinking.value = false; return; }
@@ -818,76 +819,79 @@ const makeAIMove = async () => {
     return;
   }
   
-  // AIæˆåŠŸè½å­ï¼Œæ¸…é™¤å¼ƒæƒæ ‡è®°
+  // AI成功落子，清除弃权标记
   aiPassed.value = false;
   playerPassed.value = false;
-  // è®¡å…¥ä¸€ä¸ªå›žåˆï¼ˆAIæ–¹è¡ŒåŠ¨ï¼‰
+  // 计入一个回合（AI方行动）
   game.value.moves++;
-  // æ¸…é™¤AIæ€è€ƒçŠ¶æ€
+  // 清除AI思考状态
   isAIThinking.value = false;
   
-  // AIä¸‹æ£‹å®Œæˆï¼Œå¯åŠ¨çŽ©å®¶å›žåˆå€’è®¡æ—¶
-  startPlayerTimer();
+  // AI下棋完成，启动玩家回合倒计时
+  // timer removed
 };
 
-// æ£‹ç›˜ç‚¹å‡»å¤„ç†
+// 棋盘点击处理
 const onBoardClick = (position: string, board: string) => {
   if (stoneRemovalPhase.value) { return; }
-  // åªæœ‰åœ¨çŽ©å®¶å›žåˆä¸”AIä¸åœ¨æ€è€ƒæ—¶æ‰å…è®¸ä¸‹æ£‹
+  // 只有在玩家回合且AI不在思考时才允许下棋
   if (!game.value.round || isAIThinking.value) {
     return;
   }
   
-  // è°ƒç”¨çŽ©å®¶ä¸‹æ£‹å‡½æ•°
+  // 调用玩家下棋函数
   putChess(position);
 };
 
-// çŽ©å®¶ä¸‹æ£‹
+// 玩家下棋
 const putChess = async (position: string) => {
   if (stoneRemovalPhase.value) { return; }
-  // çŽ©å®¶ä¸‹æ£‹ï¼Œåœæ­¢å€’è®¡æ—¶
-  stopTimer();
+  // 玩家下棋，停止倒计时
+  // timer removed
   
-  // æ£€æŸ¥æ˜¯å¦æ˜¯çŽ©å®¶çš„å›žåˆ
+  // 检查是否是玩家的回合
   if (!game.value.round) {
     return;
   }
   
-  // æ£€æŸ¥ä½ç½®æ˜¯å¦å·²è¢«å ç”¨
+  // 检查位置是否已被占用
   if (game.value.board1.has(position) || game.value.board2.has(position)) {
     ElMessage.warning(lang.value.text.room.position_occupied);
     return;
   }
   
-  // æ£€æŸ¥æ˜¯å¦å¯ä»¥ä¸‹æ£‹ï¼ˆå›´æ£‹è§„åˆ™ï¼ŒåŒ…æ‹¬åŠ«æ£€æµ‹ï¼‰
-  // çŽ©å®¶æ°¸è¿œä¸‹é»‘æ£‹
+  // 检查是否可以下棋（围棋规则，包括劫检测）
+  // 玩家永远下黑棋
   if (!canPutChess(game.value.board1, position, 'black', game.value.model) || 
       !canPutChess(game.value.board2, position, 'black', game.value.model)) {
     ElMessage.warning(lang.value.text.room.invalid_move);
     return;
   }
   
-  // ä½¿ç”¨storeçš„putChess actionï¼Œä¸ŽPVPæ¨¡å¼ä¿æŒä¸€è‡´
-  const result = await (() => { const now = Date.now(); finishMove(timeRt,'black', now); startTurn(timeRt,'white', now); return store.dispatch('game/putChess', { position, type: 'black' }); })();
+  // 使用store的putChess action，与PVP模式保持一致
+  // 玩家下子：结束黑方，切白方（仅当总步数>=2）
+  { const now = Date.now(); const ms = currentMsUntilTimeout(timeRt,'black', now); if (ms !== null && ms <= 0) { store.commit('game/setStatus', 'finished'); store.commit('game/setRound', false); ElMessageBox.alert(lang.value.text.room.ai_win, lang.value.text.room.finish_title, { confirmButtonText: 'OK' }); return; } }
+  { const now = Date.now(); finishMove(timeRt,'black', now); if ((game.value.moves + 1) >= 2 && timeRt.forPlayer['white'].onThePlaySince == null) { startTurn(timeRt,'white', now); } }
+  const result = await store.dispatch('game/putChess', { position, type: 'black' });
   if (!result) {
     ElMessage.warning(lang.value.text.room.invalid_move);
     return;
   }
   
-  // çŽ©å®¶æˆåŠŸè½å­ï¼Œæ¸…é™¤å¼ƒæƒæ ‡è®°
+  // 玩家成功落子，清除弃权标记
   playerPassed.value = false;
   aiPassed.value = false;
-  // è®¡å…¥ä¸€ä¸ªå›žåˆï¼ˆçŽ©å®¶è¡ŒåŠ¨ï¼‰
+  // 计入一个回合（玩家行动）
   game.value.moves++;
-  // å»¶è¿Ÿè®©AIä¸‹æ£‹ï¼Œè®©çŽ©å®¶çœ‹åˆ°é»‘æ£‹å®Œå…¨è½å®š
-  isAIThinking.value = true; // è®¾ç½®AIæ€è€ƒçŠ¶æ€
-  // çŽ©å®¶ä¸‹æ£‹åŽä¸å¯åŠ¨å€’è®¡æ—¶ï¼Œå› ä¸ºAIå³å°†æ€è€ƒ
+  // 延迟让AI下棋，让玩家看到黑棋完全落定
+  isAIThinking.value = true; // 设置AI思考状态
+  // 玩家下棋后不启动倒计时，因为AI即将思考
   setTimeout(() => {
     makeAIMove();
-  }, 500); // å»¶è¿Ÿ500æ¯«ç§’
+  }, 500); // 延迟500毫秒
 };
 
-// æ‚”æ£‹
+// 悔棋
 const backChess = async () => {
   if (stoneRemovalPhase.value) { return; }
   if (!game.value.round) {
@@ -903,7 +907,7 @@ const backChess = async () => {
   ElMessage.success(lang.value.text.room.takeback_success);
 };
 
-// è®¤è¾“
+// 认输
 const resign = () => {
   if (stoneRemovalPhase.value) { return; }
   ElMessageBox.confirm(lang.value.text.room.resign_confirm, lang.value.text.index.confirm, {
@@ -917,7 +921,7 @@ const resign = () => {
   });
 };
 
-// å¼ƒæƒ
+// 弃权
 const passChess = () => {
   if (stoneRemovalPhase.value) { return; }
   if (!game.value.round) {
@@ -929,18 +933,18 @@ const passChess = () => {
     return;
   }
   
-  // çŽ©å®¶å¼ƒæƒï¼Œåœæ­¢å€’è®¡æ—¶
-  stopTimer();
+  // 玩家弃权，停止倒计时
+  // timer removed
   
-  // çŽ©å®¶å¼ƒæƒï¼Œè½®åˆ°AI
+  // 玩家弃权，轮到AI
   store.commit('game/setRound', false);
   game.value.moves++;
-  // åŒæ–¹è¿žç»­å¼ƒæƒ -> è¿›å…¥ç‚¹ç›®ï¼ˆAIé»˜è®¤æŽ¥å—ï¼‰
+  // 双方连续弃权 -> 进入点目（AI默认接受）
   if (aiPassed.value) { enterStoneRemoval(); return; }
   playerPassed.value = true;
-  { const now = Date.now(); finishMove(timeRt,'black', now); startTurn(timeRt,'white', now); }
+  // time control removed
 
-  // AIç»§ç»­ä¸‹æ£‹
+  // AI继续下棋
   setTimeout(() => {
     makeAIMove();
   }, 1000);
@@ -972,30 +976,30 @@ const enterStoneRemoval = async () => {
   stoneRemovalPhase.value = true; 
   myRemovalAccepted.value = false; 
   await autoScoreRemoval(); 
-  // ç¡®ä¿åœ¨çŸ³å­ç§»é™¤é˜¶æ®µæ˜¾ç¤ºå½¢åŠ¿åˆ¤æ–­
+  // 确保在石子移除阶段显示形势判断
   if (!showScoreEstimate.value) {
     await estimateScore();
   }
 };
 
-// ç»§ç»­æ¸¸æˆï¼ˆé€€å‡ºçŸ³å­ç§»é™¤é˜¶æ®µï¼‰
+// 继续游戏（退出石子移除阶段）
 const continueGame = () => {
-  // é‡ç½®çŸ³å­ç§»é™¤ç›¸å…³çŠ¶æ€
+  // 重置石子移除相关状态
   stoneRemovalPhase.value = false;
   removalSet1.value = new Set();
   removalSet2.value = new Set();
   myRemovalAccepted.value = false;
   showScoreEstimate.value = false;
   
-  // æ¸…ç©ºåˆ†æ•°ä¼°ç®—æ•°æ®ï¼Œé¿å…æ­»å­æ ‡è®°æ®‹ç•™
+  // 清空分数估算数据，避免死子标记残留
   scoreEstimateData1.value = null;
   scoreEstimateData2.value = null;
   
-  // é‡ç½®passçŠ¶æ€ï¼Œå…è®¸ç»§ç»­æ¸¸æˆ
+  // 重置pass状态，允许继续游戏
   playerPassed.value = false;
   aiPassed.value = false;
   
-  // é‡æ–°å¯åŠ¨æ¸¸æˆå›žåˆ
+  // 重新启动游戏回合
   store.commit("game/setRound", true);
   
   ElMessage.success(lang.value.text.room.continue_game_success);
@@ -1017,7 +1021,7 @@ const autoScoreRemoval = async () => {
 const clearRemoval = () => { removalSet1.value = new Set(); removalSet2.value = new Set(); myRemovalAccepted.value = false; };
 const onToggleRemoval = (pos: string, which: string) => { const set = which === 'board1' ? removalSet1.value : removalSet2.value; if (set.has(pos)) set.delete(pos); else set.add(pos); myRemovalAccepted.value = false; };
 const acceptRemoval = () => {
-  myRemovalAccepted.value = true; // AIé»˜è®¤æŽ¥å—
+  myRemovalAccepted.value = true; // AI默认接受
   const cloneBoard = (src: Map<string, any>, removed: Set<string>) => { const m = new Map<string, any>(); src.forEach((v, k) => { if (!removed.has(k)) m.set(k, v); }); return m; };
   const b1 = cloneBoard(game.value.board1, removalSet1.value); const b2 = cloneBoard(game.value.board2, removalSet2.value);
   const r1 = calculateGoResult(b1 as any, game.value.model, 0, 0, 0); const r2 = calculateGoResult(b2 as any, game.value.model, 0, 0, 0);
@@ -1044,7 +1048,7 @@ const downloadSGF = () => {
 };
 
 const showScoreDetail = () => {
-  // 计算最终分数详情
+  // ????????
   const cloneBoard = (src: Map<string, any>, removed: Set<string>) => {
     const m = new Map<string, any>();
     src.forEach((v, k) => { if (!removed.has(k)) m.set(k, v); });
@@ -1078,15 +1082,14 @@ const showScoreDetail = () => {
   scoreDetailVisible.value = true;
 };
 
-// ä¸€é”®ç»ˆå±€ï¼šè¿›å…¥ç‚¹ç›®å¹¶è‡ªåŠ¨æ ‡æ³¨æ­»å­ï¼Œä½†ä¸è‡ªåŠ¨æŽ¥å—
-//ï¼ˆAI é»˜è®¤å·²æŽ¥å—ï¼ŒçŽ©å®¶éœ€æ‰‹åŠ¨ç‚¹å‡» Accept å®Œæˆç»“ç®—ï¼‰
+// 一键终局：进入点目并自动标注死子，但不自动接受
+//（AI 默认已接受，玩家需手动点击 Accept 完成结算）
 const endGameNow = async () => {
-  stopTimer();
   await enterStoneRemoval();
-  // ä¿ç•™åœ¨ç‚¹ç›®é˜¶æ®µï¼Œç­‰å¾…çŽ©å®¶æ‰‹åŠ¨ç‚¹å‡» Accept
+  // 保留在点目阶段，等待玩家手动点击 Accept
 };
 
-// å‘é€æ¶ˆæ¯
+// 发送消息
 const sendMessage = async () => {
   if (!input.value) {
     return;
@@ -1109,41 +1112,41 @@ const step = (delta: number) => {
 
 // -------- Keyboard controls --------
 const handleKeydown = (event: KeyboardEvent) => {
-  // åªåœ¨æ¸¸æˆè¿›è¡Œä¸­ä¸”æœ‰è®°å½•æ—¶å“åº”é”®ç›˜äº‹ä»¶
+  // 只在游戏进行中且有记录时响应键盘事件
   if (game.value.status !== 'playing' || !game.value.records) return;
   
-  // é˜²æ­¢åœ¨è¾“å…¥æ¡†ä¸­è§¦å‘
+  // 防止在输入框中触发
   if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
   
   switch (event.key) {
     case 'ArrowLeft':
       event.preventDefault();
       if (event.shiftKey) {
-        step(-5); // Shift + å·¦ç®­å¤´ï¼šåŽé€€5æ­¥
+        step(-5); // Shift + 左箭头：后退5步
       } else {
-        step(-1); // å·¦ç®­å¤´ï¼šåŽé€€1æ­¥
+        step(-1); // 左箭头：后退1步
       }
       break;
     case 'ArrowRight':
       event.preventDefault();
       if (event.shiftKey) {
-        step(5); // Shift + å³ç®­å¤´ï¼šå‰è¿›5æ­¥
+        step(5); // Shift + 右箭头：前进5步
       } else {
-        step(1); // å³ç®­å¤´ï¼šå‰è¿›1æ­¥
+        step(1); // 右箭头：前进1步
       }
       break;
     case 'Home':
       event.preventDefault();
-      gotoStart(); // Homeé”®ï¼šè·³åˆ°å¼€å§‹
+      gotoStart(); // Home键：跳到开始
       break;
     case 'End':
       event.preventDefault();
-      gotoEnd(); // Endé”®ï¼šè·³åˆ°ç»“æŸ
+      gotoEnd(); // End键：跳到结束
       break;
   }
 };
 
-// æ·»åŠ å’Œç§»é™¤é”®ç›˜äº‹ä»¶ç›‘å¬å™¨
+// 添加和移除键盘事件监听器
 onMounted(() => {
   document.addEventListener('keydown', handleKeydown);
 });

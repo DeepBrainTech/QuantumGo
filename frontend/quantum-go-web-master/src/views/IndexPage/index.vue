@@ -35,43 +35,43 @@
         <el-form-item label="Komi" :label-width="'140px'">
           <el-input-number v-model="form.komi" :step="0.5" :min="0" :max="20" />
         </el-form-item>
-        <!-- Time control selection -->
-        <el-form-item label="Time Control" :label-width="'140px'">
-          <el-select v-model="timeForm.timeType" placeholder="Select time control">
-            <el-option label="Unlimited" value="none" />
-            <el-option label="Absolute" value="absolute" />
-            <el-option label="Simple" value="simple" />
-            <el-option label="Fischer" value="fischer" />
-            <el-option label="Byo-Yomi" value="byoyomi" />
-            <el-option label="Canadian" value="canadian" />
+        <!-- Time control selection (UI only, no logic) -->
+        <el-form-item :label="lang.text.index.tc_title" :label-width="'140px'">
+          <el-select v-model="timeForm.timeType" :placeholder="lang.text.index.tc_placeholder">
+            <el-option :label="lang.text.index.tc_unlimited" value="none" />
+            <el-option :label="lang.text.index.tc_absolute" value="absolute" />
+            <el-option :label="lang.text.index.tc_simple" value="simple" />
+            <el-option :label="lang.text.index.tc_fischer" value="fischer" />
+            <el-option :label="lang.text.index.tc_byoyomi" value="byoyomi" />
+            <el-option :label="lang.text.index.tc_canadian" value="canadian" />
           </el-select>
         </el-form-item>
         <template v-if="timeForm.timeType !== 'none'">
-          <el-form-item label="Main Time (min)" :label-width="'140px'">
+          <el-form-item :label="lang.text.index.tc_main_time" :label-width="'140px'">
             <el-input-number v-model="timeForm.mainTimeMin" :min="0" :max="300" />
           </el-form-item>
         </template>
         <template v-if="timeForm.timeType === 'fischer'">
-          <el-form-item label="Increment (sec)" :label-width="'140px'">
+          <el-form-item :label="lang.text.index.tc_increment" :label-width="'140px'">
             <el-input-number v-model="timeForm.fischerIncrementSec" :min="0" :max="300" />
           </el-form-item>
-          <el-form-item label="Max Cap (min, 0=none)" :label-width="'140px'">
+          <el-form-item :label="lang.text.index.tc_max_cap" :label-width="'140px'">
             <el-input-number v-model="timeForm.fischerMaxMin" :min="0" :max="600" />
           </el-form-item>
         </template>
         <template v-if="timeForm.timeType === 'byoyomi'">
-          <el-form-item label="Period Time (sec)" :label-width="'140px'">
+          <el-form-item :label="lang.text.index.tc_period_time" :label-width="'140px'">
             <el-input-number v-model="timeForm.periodTimeSec" :min="5" :max="300" />
           </el-form-item>
-          <el-form-item label="Periods (count)" :label-width="'140px'">
+          <el-form-item :label="lang.text.index.tc_periods" :label-width="'140px'">
             <el-input-number v-model="timeForm.numPeriods" :min="1" :max="10" />
           </el-form-item>
         </template>
         <template v-if="timeForm.timeType === 'canadian'">
-          <el-form-item label="Period Time (sec)" :label-width="'140px'">
+          <el-form-item :label="lang.text.index.tc_period_time" :label-width="'140px'">
             <el-input-number v-model="timeForm.periodTimeSec" :min="5" :max="600" />
           </el-form-item>
-          <el-form-item label="Stones / Period" :label-width="'140px'">
+          <el-form-item :label="lang.text.index.tc_stones_per_period" :label-width="'140px'">
             <el-input-number v-model="timeForm.numPeriods" :min="1" :max="50" />
           </el-form-item>
         </template>
