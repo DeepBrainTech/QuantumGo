@@ -43,7 +43,6 @@
             <el-option :label="lang.text.index.tc_simple" value="simple" />
             <el-option :label="lang.text.index.tc_fischer" value="fischer" />
             <el-option :label="lang.text.index.tc_byoyomi" value="byoyomi" />
-            <el-option :label="lang.text.index.tc_canadian" value="canadian" />
           </el-select>
         </el-form-item>
         <template v-if="timeForm.timeType !== 'none'">
@@ -65,14 +64,6 @@
           </el-form-item>
           <el-form-item :label="lang.text.index.tc_periods" :label-width="'140px'">
             <el-input-number v-model="timeForm.numPeriods" :min="1" :max="10" />
-          </el-form-item>
-        </template>
-        <template v-if="timeForm.timeType === 'canadian'">
-          <el-form-item :label="lang.text.index.tc_period_time" :label-width="'140px'">
-            <el-input-number v-model="timeForm.periodTimeSec" :min="5" :max="600" />
-          </el-form-item>
-          <el-form-item :label="lang.text.index.tc_stones_per_period" :label-width="'140px'">
-            <el-input-number v-model="timeForm.numPeriods" :min="1" :max="50" />
           </el-form-item>
         </template>
       </el-form>
@@ -107,7 +98,7 @@ onMounted(async () => {
 const createRoomVisible = ref(false);
 const form = reactive({
   gameMode: "pvp",
-  model: 9, // é»˜è®¤19è·¯æ£‹ç›˜
+  model: 9, // 默认19路棋盘
   komi: 7.5
 });
 
@@ -117,7 +108,7 @@ const createRoom = async () => {
 
 // Time control form state
 const timeForm = reactive({
-  timeType: 'none' as 'none'|'absolute'|'simple'|'fischer'|'byoyomi'|'canadian',
+  timeType: 'none' as 'none'|'absolute'|'simple'|'fischer'|'byoyomi',
   mainTimeMin: 5,
   fischerIncrementSec: 5,
   fischerMaxMin: 0,
@@ -134,18 +125,24 @@ const createRoomSubmit = async () => {
   // Require login for PvP rooms
   // Require login for all modes (PVP and AI)
   if (!user.value.isLogin) {
-    const fallback = (lang.value.active === 'cn') ? 'è¯·å…ˆç™»å½•' : 'Log in to continue.';
+    const fallback = (lang.value.active === 'cn') ? '请先登录' : 'Log in to continue.';
     ElMessage({ message: (lang.value.text.login?.login_required ?? fallback), grouping: true, type: "warning" });
     return;
   }
   // Build time_control from timeForm and pass to backend
   let timeControl: any | undefined = undefined;
   if (timeForm.timeType !== 'none') {
-    const mainTimeMS = Math.max(0, Math.floor(timeForm.mainTimeMin * 60 * 1000));
+    const mainTimeMS = Math.floor(Math.max(1, timeForm.mainTimeMin) * 60 * 1000);
     if (timeForm.timeType === 'absolute') {
-      timeControl = { type: 'absolute', mainTimeMS };
+      timeControl = {
+        type: 'absolute',
+        mainTimeMS,
+      };
     } else if (timeForm.timeType === 'simple') {
-      timeControl = { type: 'simple', mainTimeMS };
+      timeControl = {
+        type: 'simple',
+        mainTimeMS,
+      };
     } else if (timeForm.timeType === 'fischer') {
       timeControl = {
         type: 'fischer',
@@ -160,13 +157,6 @@ const createRoomSubmit = async () => {
         numPeriods: Math.max(1, Math.floor(timeForm.numPeriods)),
         periodTimeMS: Math.floor(Math.max(1, timeForm.periodTimeSec) * 1000),
       };
-    } else if (timeForm.timeType === 'canadian') {
-      timeControl = {
-        type: 'canadian',
-        mainTimeMS,
-        numPeriods: Math.max(1, Math.floor(timeForm.numPeriods)),
-        periodTimeMS: Math.floor(Math.max(1, timeForm.periodTimeSec) * 1000),
-      };
     }
   }
   const roomId = await store.dispatch("game/createRoom", {gameMode, model, komi, timeControl});
@@ -175,7 +165,7 @@ const createRoomSubmit = async () => {
     return;
   }
   
-  // æ ¹æ®æ¸¸æˆæ¨¡å¼è·³è½¬åˆ°ä¸åŒçš„è·¯ç”±
+  // 根据游戏模式跳转到不同的路由
   if (gameMode === 'ai') {
     await router.push(`/ai/${roomId}`);
   } else {
@@ -187,8 +177,3 @@ const createRoomSubmit = async () => {
 <style scoped lang="scss">
 @use "./index.scss" as *;
 </style>
-
-
-
-
-

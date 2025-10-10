@@ -335,14 +335,12 @@ function startClockLoop() {
         if (timeRt.forPlayer.black.onThePlaySince != null && msB != null) {
           let denom = 1;
           if (cfg.type === 'byoyomi') denom = (timeRt.forPlayer.black.clockState as any).mainTimeRemainingMS > 0 ? cfg.mainTimeMS : cfg.periodTimeMS;
-          else if (cfg.type === 'canadian') denom = (timeRt.forPlayer.black.clockState as any).mainTimeRemainingMS > 0 ? cfg.mainTimeMS : cfg.periodTimeMS;
           else denom = cfg.mainTimeMS || 1;
           progressBlack.value = Math.max(0, Math.min(100, Math.floor((msB / Math.max(1, denom)) * 100)));
         }
         if (timeRt.forPlayer.white.onThePlaySince != null && msW != null) {
           let denom = 1;
           if (cfg.type === 'byoyomi') denom = (timeRt.forPlayer.white.clockState as any).mainTimeRemainingMS > 0 ? cfg.mainTimeMS : cfg.periodTimeMS;
-          else if (cfg.type === 'canadian') denom = (timeRt.forPlayer.white.clockState as any).mainTimeRemainingMS > 0 ? cfg.mainTimeMS : cfg.periodTimeMS;
           else denom = cfg.mainTimeMS || 1;
           progressWhite.value = Math.max(0, Math.min(100, Math.floor((msW / Math.max(1, denom)) * 100)));
         }

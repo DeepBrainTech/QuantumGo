@@ -289,7 +289,7 @@ function startClockLoop() {
       if (cfg) {
         if (timeRt.forPlayer.black.onThePlaySince != null && msB != null) {
           let denom = cfg.mainTimeMS || 1;
-          if (cfg.type === 'byoyomi' || cfg.type === 'canadian') {
+          if (cfg.type === 'byoyomi') {
             const s: any = timeRt.forPlayer.black.clockState;
             denom = s.mainTimeRemainingMS > 0 ? cfg.mainTimeMS : cfg.periodTimeMS;
           }
@@ -297,7 +297,7 @@ function startClockLoop() {
         }
         if (timeRt.forPlayer.white.onThePlaySince != null && msW != null) {
           let denom = cfg.mainTimeMS || 1;
-          if (cfg.type === 'byoyomi' || cfg.type === 'canadian') {
+          if (cfg.type === 'byoyomi') {
             const s: any = timeRt.forPlayer.white.clockState;
             denom = s.mainTimeRemainingMS > 0 ? cfg.mainTimeMS : cfg.periodTimeMS;
           }

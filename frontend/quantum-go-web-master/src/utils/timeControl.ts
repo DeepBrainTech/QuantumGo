@@ -7,7 +7,6 @@ export enum TimeControlType {
   Simple = 'simple',
   Fischer = 'fischer',
   ByoYomi = 'byoyomi',
-  Canadian = 'canadian',
 }
 
 export interface ITimeControlBaseConfig {
@@ -27,17 +26,11 @@ export interface IByoYomiConfig extends ITimeControlBaseConfig {
   periodTimeMS: number;
 }
 
-export interface ICanadianConfig extends ITimeControlBaseConfig {
-  type: TimeControlType.Canadian;
-  numPeriods: number; // stones per period
-  periodTimeMS: number;
-}
 
 export type AnyTimeConfig =
   | ITimeControlBaseConfig // Absolute
   | IFischerConfig
   | IByoYomiConfig
-  | ICanadianConfig
   | ({ type: TimeControlType.Simple } & ITimeControlBaseConfig);
 
 export interface IBasicTimeState {
@@ -50,13 +43,8 @@ export interface IByoYomiState {
   periodTimeRemainingMS: number;
 }
 
-export interface ICanadianState {
-  mainTimeRemainingMS: number;
-  periodTimeRemainingMS: number;
-  renewalCountdown: number;
-}
 
-export type AnyClockState = IBasicTimeState | IByoYomiState | ICanadianState;
+export type AnyClockState = IBasicTimeState | IByoYomiState;
 
 export interface PerPlayerClock {
   clockState: AnyClockState;
@@ -95,14 +83,6 @@ export const Clocks = {
           periodTimeRemainingMS: c.periodTimeMS,
         } as IByoYomiState;
       }
-      case TimeControlType.Canadian: {
-        const c = config as ICanadianConfig;
-        return {
-          mainTimeRemainingMS: c.mainTimeMS,
-          periodTimeRemainingMS: c.periodTimeMS,
-          renewalCountdown: c.numPeriods,
-        } as ICanadianState;
-      }
       default:
         return { remainingTimeMS: 0 };
     }
@@ -139,19 +119,6 @@ export const Clocks = {
         s.periodTimeRemainingMS = s.periodsRemaining === 0 ? 0 : c.periodTimeMS - remainder;
         return s;
       }
-      case TimeControlType.Canadian: {
-        let s = { ...(state as ICanadianState) };
-        if (s.mainTimeRemainingMS) {
-          if (s.mainTimeRemainingMS >= elapsedMS) {
-            s.mainTimeRemainingMS -= elapsedMS;
-            return s;
-          }
-          elapsedMS -= s.mainTimeRemainingMS;
-          s.mainTimeRemainingMS = 0;
-        }
-        s.periodTimeRemainingMS -= elapsedMS;
-        return s;
-      }
     }
     // Default: no change
     return { ...(state as any) };
@@ -173,17 +140,6 @@ export const Clocks = {
         const s = state as IByoYomiState;
         return { ...s, periodTimeRemainingMS: c.periodTimeMS } as IByoYomiState;
       }
-      case TimeControlType.Canadian: {
-        const c = config as ICanadianConfig;
-        const s = { ...(state as ICanadianState) };
-        if (s.mainTimeRemainingMS > 0) return s;
-        s.renewalCountdown--;
-        if (s.renewalCountdown === 0) {
-          s.renewalCountdown = c.numPeriods;
-          s.periodTimeRemainingMS = c.periodTimeMS;
-        }
-        return s;
-      }
       case TimeControlType.Absolute:
       default:
         return { ...(state as any) };
@@ -204,10 +160,6 @@ export const Clocks = {
           s.mainTimeRemainingMS + s.periodTimeRemainingMS + fullPeriodsRemaining * c.periodTimeMS
         );
       }
-      case TimeControlType.Canadian: {
-        const s = state as ICanadianState;
-        return s.mainTimeRemainingMS + s.periodTimeRemainingMS;
-      }
     }
     return 0;
   },
@@ -222,14 +174,6 @@ export const Clocks = {
         const c = config as IByoYomiConfig;
         const s = state as IByoYomiState;
         const periodTimeString = `${msToTime(s.periodTimeRemainingMS)} (${s.periodsRemaining})`;
-        if (s.mainTimeRemainingMS > 0) {
-          return `${msToTime(s.mainTimeRemainingMS)} + ${periodTimeString}`;
-        }
-        return periodTimeString;
-      }
-      case TimeControlType.Canadian: {
-        const s = state as ICanadianState;
-        const periodTimeString = `${msToTime(s.periodTimeRemainingMS)}/${s.renewalCountdown}`;
         if (s.mainTimeRemainingMS > 0) {
           return `${msToTime(s.mainTimeRemainingMS)} + ${periodTimeString}`;
         }
