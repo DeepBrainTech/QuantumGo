@@ -19,6 +19,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 mod api;
 mod db;
 mod entity;
+mod jwt;
 mod katago;
 mod rating;
 mod score_estimator;
@@ -69,6 +70,7 @@ async fn main() {
         .route("/getGameInfo", post(api::get_game_info))
         .route("/userRegister", post(api::register))
         .route("/getUserInfo", post(api::login))
+        .route("/jwtLogin", post(api::jwt_login))  // WordPress SSO登录
         .route("/getLeaderboard", post(api::get_leaderboard))
         .route("/getUserProfile", post(api::get_user_profile))
         .route("/lobby/listRooms", post(api::list_rooms))

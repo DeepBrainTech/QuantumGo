@@ -13,6 +13,7 @@ use crate::katago::{
     ScoreEstimateResponse,
     estimate_with_score_estimator,
 };
+use crate::jwt::verify_jwt_token;
 
 type ApiResult<T> = Result<(StatusCode, Json<T>), (StatusCode, Json<serde_json::Value>)>;
 
@@ -26,6 +27,18 @@ pub struct RegisterRequest {
 pub struct LoginRequest {
     username: String,
     password: String,
+}
+
+#[derive(Deserialize)]
+pub struct JwtLoginRequest {
+    token: String,
+}
+
+#[derive(serde::Serialize)]
+pub struct JwtLoginResponse {
+    user_id: Uuid,
+    username: String,
+    wordpress_id: u64,
 }
 
 #[derive(Deserialize)]
@@ -337,4 +350,85 @@ pub async fn ai_genmove_dual(
             Json(serde_json::json!({ "error": format!("katago dual-genmove error: {}", err) })),
         )),
     }
+}
+
+/// WordPress SSO - JWT Token登录
+/// 
+/// 验证WordPress传来的JWT token，如果用户不存在则自动创建
+#[axum::debug_handler]
+pub async fn jwt_login(
+    State(state): State<crate::ws::AppState>,
+    Json(req): Json<JwtLoginRequest>,
+) -> ApiResult<JwtLoginResponse> {
+    // 验证JWT token
+    let claims = match verify_jwt_token(&req.token) {
+        Ok(c) => c,
+        Err(e) => {
+            return Err((
+                StatusCode::UNAUTHORIZED,
+                Json(serde_json::json!({
+                    "error": format!("Invalid token: {}", e)
+                })),
+            ));
+        }
+    };
+    
+    // 检查token是否过期（额外检查）
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    
+    if claims.exp < now {
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({
+                "error": "Token expired"
+            })),
+        ));
+    }
+    
+    // 检查用户是否存在，不存在则自动创建
+    let user = match state.db.get_user_by_username(&claims.username).await {
+        Ok(u) => u,
+        Err(_) => {
+            // 用户不存在，自动创建
+            // 使用WordPress ID作为密码的一部分（用户无需知道这个密码）
+            let temp_password = format!("wp_sso_{}", claims.sub);
+            match state.db.create_user(&claims.username, &temp_password).await {
+                Ok(u) => {
+                    tracing::info!(
+                        "Auto-created user from WordPress SSO: username={}, wordpress_id={}", 
+                        claims.username, 
+                        claims.sub
+                    );
+                    u
+                }
+                Err(e) => {
+                    return Err((
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(serde_json::json!({
+                            "error": format!("Failed to create user: {}", e)
+                        })),
+                    ));
+                }
+            }
+        }
+    };
+    
+    tracing::info!(
+        "JWT SSO login successful: user_id={}, username={}, wordpress_id={}", 
+        user.user_id, 
+        user.username, 
+        claims.sub
+    );
+    
+    Ok((
+        StatusCode::OK,
+        Json(JwtLoginResponse {
+            user_id: user.user_id,
+            username: user.username,
+            wordpress_id: claims.sub,
+        }),
+    ))
 }

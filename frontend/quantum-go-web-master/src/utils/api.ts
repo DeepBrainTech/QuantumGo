@@ -56,6 +56,12 @@ class Api {
     return this.request("/userRegister", data);
   }
 
+  // JWT SSO登录 - WordPress单点登录
+  public async jwtLogin(token: string): Promise<Response> {
+    const data = { token };
+    return this.request("/jwtLogin", data);
+  }
+
   public async getLeaderboard(model: number, limit: number = 50): Promise<Response> {
     const data = { model, limit };
     return this.request("/getLeaderboard", data);

@@ -31,8 +31,50 @@ const mutations = {
 };
 
 const actions = {
-  async initializeUserInfo({ commit, rootState }: any) {
-    // 从localStorage获取用户信息
+  async initializeUserInfo({ commit, dispatch, rootState }: any) {
+    // 检查URL参数中是否有SSO token
+    const urlParams = new URLSearchParams(window.location.search);
+    const ssoToken = urlParams.get('sso_token');
+    
+    if (ssoToken) {
+      // 使用SSO token登录
+      const res = await api.jwtLogin(ssoToken);
+      if (res.success) {
+        commit("setUserId", res.data.user_id);
+        commit("setLoginState", true);
+        commit("setName", res.data.username);
+        localStorage.setItem("userId", res.data.user_id);
+        localStorage.setItem("user_name", res.data.username);
+        localStorage.setItem("sso_token", ssoToken);
+        
+        // 清除URL中的token参数
+        window.history.replaceState({}, document.title, window.location.pathname);
+        
+        ElMessage.success({ 
+          message: "WordPress SSO登录成功 / WordPress SSO Login Successful", 
+          grouping: true 
+        });
+        return;
+      }
+    }
+    
+    // 检查是否有保存的SSO token
+    const savedSsoToken = localStorage.getItem("sso_token");
+    if (savedSsoToken) {
+      const res = await api.jwtLogin(savedSsoToken);
+      if (res.success) {
+        commit("setUserId", res.data.user_id);
+        commit("setLoginState", true);
+        commit("setName", res.data.username);
+        localStorage.setItem("userId", res.data.user_id);
+        return;
+      } else {
+        // Token已过期，清除
+        localStorage.removeItem("sso_token");
+      }
+    }
+    
+    // 从localStorage获取用户信息（传统登录方式）
     const user_name = localStorage.getItem("user_name") ?? "";
     const password = localStorage.getItem("user_password") ?? "";
     
@@ -82,6 +124,7 @@ const actions = {
       localStorage.removeItem("userId");
       localStorage.removeItem("user_name");
       localStorage.removeItem("user_password");
+      localStorage.removeItem("sso_token");
     } catch {}
     commit("clearUserInfo");
     ElMessage.success({ message: "Logged out", grouping: true });
