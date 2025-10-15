@@ -41,8 +41,13 @@ pub struct WordPressUser {
 /// * `Ok(Claims)` - 验证成功，返回解码后的claims
 /// * `Err` - 验证失败，token无效或已过期
 pub fn verify_jwt_token(token: &str) -> Result<Claims, jsonwebtoken::errors::Error> {
-    let validation = Validation::default();
+    let mut validation = Validation::default();
+    validation.leeway = 60; // 允许60秒的时间误差
+    
     let jwt_secret = get_jwt_secret();
+    tracing::info!("JWT secret length: {}", jwt_secret.len());
+    tracing::info!("JWT secret (first 10 chars): {}", &jwt_secret[..std::cmp::min(10, jwt_secret.len())]);
+    
     let decoding_key = DecodingKey::from_secret(jwt_secret.as_ref());
     
     let token_data = decode::<Claims>(token, &decoding_key, &validation)?;
