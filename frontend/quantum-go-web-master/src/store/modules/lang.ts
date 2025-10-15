@@ -226,7 +226,8 @@ const text = {
       password_not_confirm: "The two passwords do not match",
       login_error: "Login failed, please check your username and password",
       login_success: "Welcome: ",
-      register_error: "Registration failed, please check your username"
+      register_error: "Registration failed, please check your username",
+      logout_success: "Logged out"
     }
   },
   cn: {
@@ -431,7 +432,8 @@ const text = {
       password_not_confirm: "两次输入的密码不一致",
       login_error: "登录失败，请检查用户名与密码",
       login_success: "欢迎：",
-      register_error: "注册失败，请检查用户名"
+      register_error: "注册失败，请检查用户名",
+      logout_success: "已退出登录"
     }
   }
 };

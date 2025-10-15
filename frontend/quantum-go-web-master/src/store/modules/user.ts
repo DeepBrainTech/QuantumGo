@@ -49,7 +49,9 @@ const actions = {
         
         // 清除URL中的token参数
         window.history.replaceState({}, document.title, window.location.pathname);
+        return;
       }
+    }
     
     // 检查是否有保存的SSO token
     const savedSsoToken = localStorage.getItem("sso_token");
@@ -94,6 +96,8 @@ const actions = {
       localStorage.setItem("userId", res.data.user_id);
       localStorage.setItem("user_name", user_name);
       localStorage.setItem("user_password", password);
+      // 清除SSO token，因为现在使用传统登录
+      localStorage.removeItem("sso_token");
     }
     return res;
   },
@@ -108,11 +112,13 @@ const actions = {
       localStorage.setItem("userId", res.data.user_id);
       localStorage.setItem("user_name", user_name);
       localStorage.setItem("user_password", password);
+      // 清除SSO token，因为现在使用传统注册
+      localStorage.removeItem("sso_token");
     }
     return res;
   },
 
-  async logout({ commit }: any) {
+  async logout({ commit, rootState }: any) {
     try {
       localStorage.removeItem("userId");
       localStorage.removeItem("user_name");
@@ -120,7 +126,8 @@ const actions = {
       localStorage.removeItem("sso_token");
     } catch {}
     commit("clearUserInfo");
-    ElMessage.success({ message: "Logged out", grouping: true });
+    const message = rootState.lang.text.login.logout_success;
+    ElMessage.success({ message, grouping: true });
   }
 };
 
