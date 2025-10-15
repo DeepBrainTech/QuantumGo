@@ -9,3 +9,4 @@ restartPolicyType = "on_failure"
 
 [env]
 RUST_LOG = "info"
+JWT_SECRET = "sGWfcMcDM1cMgsY4y9rsiA=="

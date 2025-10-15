@@ -360,10 +360,16 @@ pub async fn jwt_login(
     State(state): State<crate::ws::AppState>,
     Json(req): Json<JwtLoginRequest>,
 ) -> ApiResult<JwtLoginResponse> {
+    tracing::info!("JWT login attempt with token: {}", &req.token[..std::cmp::min(50, req.token.len())]);
+    
     // 验证JWT token
     let claims = match verify_jwt_token(&req.token) {
-        Ok(c) => c,
+        Ok(c) => {
+            tracing::info!("JWT token verified successfully for user: {}", c.username);
+            c
+        },
         Err(e) => {
+            tracing::error!("JWT token verification failed: {}", e);
             return Err((
                 StatusCode::UNAUTHORIZED,
                 Json(serde_json::json!({
