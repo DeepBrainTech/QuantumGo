@@ -49,14 +49,7 @@ const actions = {
         
         // 清除URL中的token参数
         window.history.replaceState({}, document.title, window.location.pathname);
-        
-        ElMessage.success({ 
-          message: "WordPress SSO登录成功 / WordPress SSO Login Successful", 
-          grouping: true 
-        });
-        return;
       }
-    }
     
     // 检查是否有保存的SSO token
     const savedSsoToken = localStorage.getItem("sso_token");
