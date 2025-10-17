@@ -1,4 +1,4 @@
-FROM rust:bookworm AS builder
+FROM rust:bookworm AS builder 
 
 WORKDIR /app
 
@@ -27,6 +27,8 @@ RUN apt-get update \
     zlib1g \
     libstdc++6 \
     libgomp1 \
+    ocl-icd-libopencl1 \
+    pocl-opencl-icd \
     && rm -rf /var/lib/apt/lists/*
 
 # (No backports needed on bookworm; libssl3 is available in main.)
@@ -36,7 +38,7 @@ COPY --from=builder /app/target/release/quantum-go-api /usr/local/bin/
 
 # Bundle KataGo assets into the image to avoid executing from a bind mount
 WORKDIR /app
-COPY katago/katago_eigen /app/katago
+COPY katago/katago_opencl /app/katago
 COPY katago/model /app/katago/model
 # If the provided katago is an AppImage, extract the real binary so we don't need FUSE in container.
 RUN set -eux; \
@@ -84,7 +86,7 @@ ENV DATABASE_URL=postgres://postgres:postgres@postgres:5432/quantum_go
 ENV KATAGO_BIN=/app/katago/katago_real
 ENV KATAGO_MODEL=/app/katago/model/${KATAGO_MODEL_FILE}
 ENV KATAGO_GTP_CONFIG=/app/katago/default_gtp.cfg
-ENV KATAGO_OVERRIDES=backend=eigen,ponderingEnabled=false,maxTime=3.0,numSearchThreads=2,nnMaxBatchSize=2,nnCacheSizePowerOfTwo=14,logAllGTPCommunication=false,logSearchInfo=false,logToStderr=false,logDir=/tmp/gtp_logs
+ENV KATAGO_OVERRIDES=backend=opencl,ponderingEnabled=false,maxTime=3.0,numSearchThreads=2,nnMaxBatchSize=2,nnCacheSizePowerOfTwo=14,logAllGTPCommunication=false,logSearchInfo=false,logToStderr=false,logDir=/tmp/gtp_logs
 
 # Expose the port the app runs on
 EXPOSE 3000
