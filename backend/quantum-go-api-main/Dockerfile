@@ -81,9 +81,9 @@ RUN set -eux; \
 ENV RUST_LOG=info
 ENV DATABASE_URL=postgres://postgres:postgres@postgres:5432/quantum_go
 # Sensible defaults so the app can run without extra env wiring
-ENV KATAGO_BIN=/app/katago/katago_eigen/katago_real
+ENV KATAGO_BIN=/app/katago/katago_real
 ENV KATAGO_MODEL=/app/katago/model/${KATAGO_MODEL_FILE}
-ENV KATAGO_GTP_CONFIG=/app/katago/katago_eigen/default_gtp.cfg
+ENV KATAGO_GTP_CONFIG=/app/katago/default_gtp.cfg
 ENV KATAGO_OVERRIDES=backend=eigen,ponderingEnabled=false,maxTime=3.0,numSearchThreads=2,nnMaxBatchSize=2,nnCacheSizePowerOfTwo=14,logAllGTPCommunication=false,logSearchInfo=false,logToStderr=false,logDir=/tmp/gtp_logs
 
 # Expose the port the app runs on
